@@ -1,0 +1,68 @@
+body {
+  font-family: system-ui, sans-serif;
+  margin: 2rem auto;
+  max-width: 64rem;
+  padding: 0 1rem;
+}
+
+select,
+button {
+  font: inherit;
+  margin: 0.25rem 0.5rem 0.25rem 0;
+  padding: 0.45rem 0.65rem;
+}
+
+button {
+  cursor: pointer;
+}
+
+pre {
+  background: #f3f5f7;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  padding: 1rem;
+}
+
+.pipeline {
+  align-items: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.75rem;
+  list-style: none;
+  margin: 0.75rem 0 1.5rem;
+  padding: 0;
+}
+
+.pipeline li {
+  background: #e8f1fb;
+  border: 1px solid #9bb9d8;
+  border-radius: 0.5rem;
+  min-width: 7rem;
+  padding: 0.75rem;
+  position: relative;
+  text-align: center;
+}
+
+.pipeline li:not(:last-child)::after {
+  color: #40546a;
+  content: "\2192";
+  font-size: 1.4rem;
+  left: calc(100% + 0.35rem);
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+@media (max-width: 38rem) {
+  .pipeline {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .pipeline li:not(:last-child)::after {
+    content: "\2193";
+    left: 50%;
+    top: calc(100% + 0.05rem);
+    transform: translateX(-50%);
+  }
+}

@@ -1,0 +1,390 @@
+name: distributed-three-tier
+
+services:
+  presentation-lb-master:
+    image: haproxy:3.2-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./haproxy/presentation-master.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    restart: unless-stopped
+    depends_on:
+      web1:
+        condition: service_started
+      web2:
+        condition: service_started
+      web3:
+        condition: service_started
+    networks:
+      edge:
+        ipv4_address: 172.30.0.11
+
+  presentation-lb-backup:
+    image: haproxy:3.2-alpine
+    volumes:
+      - ./haproxy/presentation-backup.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    restart: unless-stopped
+    depends_on:
+      web1:
+        condition: service_started
+      web2:
+        condition: service_started
+      web3:
+        condition: service_started
+    networks:
+      edge:
+        ipv4_address: 172.30.0.12
+
+  presentation-keepalived-master:
+    build:
+      context: ./keepalived
+      args:
+        KEEPALIVED_CONFIG: presentation-master.conf
+    network_mode: "service:presentation-lb-master"
+    cap_add:
+      - NET_ADMIN
+      - NET_BROADCAST
+      - NET_RAW
+    restart: unless-stopped
+    depends_on:
+      presentation-lb-master:
+        condition: service_started
+
+  presentation-keepalived-backup:
+    build:
+      context: ./keepalived
+      args:
+        KEEPALIVED_CONFIG: presentation-backup.conf
+    network_mode: "service:presentation-lb-backup"
+    cap_add:
+      - NET_ADMIN
+      - NET_BROADCAST
+      - NET_RAW
+    restart: unless-stopped
+    depends_on:
+      presentation-lb-backup:
+        condition: service_started
+
+  web1:
+    image: nginx:alpine
+    hostname: webnode1
+    volumes:
+      - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./web/site1:/usr/share/nginx/html:ro
+      - ./web/catalog.js:/usr/share/nginx/catalog.js:ro
+      - ./web/catalog.css:/usr/share/nginx/catalog.css:ro
+    depends_on:
+      - application-lb-master
+    networks:
+      - edge
+      - application
+
+  web2:
+    image: nginx:alpine
+    hostname: webnode2
+    volumes:
+      - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./web/site2:/usr/share/nginx/html:ro
+      - ./web/catalog.js:/usr/share/nginx/catalog.js:ro
+      - ./web/catalog.css:/usr/share/nginx/catalog.css:ro
+    depends_on:
+      - application-lb-master
+    networks:
+      - edge
+      - application
+
+  web3:
+    image: nginx:alpine
+    hostname: webnode3
+    volumes:
+      - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./web/site3:/usr/share/nginx/html:ro
+      - ./web/catalog.js:/usr/share/nginx/catalog.js:ro
+      - ./web/catalog.css:/usr/share/nginx/catalog.css:ro
+    depends_on:
+      - application-lb-master
+    networks:
+      - edge
+      - application
+
+  application-lb-master:
+    image: haproxy:3.2-alpine
+    volumes:
+      - ./haproxy/application-master.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    restart: unless-stopped
+    depends_on:
+      app1:
+        condition: service_started
+      app2:
+        condition: service_started
+      app3:
+        condition: service_started
+    networks:
+      application:
+        ipv4_address: 172.31.0.11
+
+  application-lb-backup:
+    image: haproxy:3.2-alpine
+    volumes:
+      - ./haproxy/application-backup.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    restart: unless-stopped
+    depends_on:
+      app1:
+        condition: service_started
+      app2:
+        condition: service_started
+      app3:
+        condition: service_started
+    networks:
+      application:
+        ipv4_address: 172.31.0.12
+
+  application-keepalived-master:
+    build:
+      context: ./keepalived
+      args:
+        KEEPALIVED_CONFIG: application-master.conf
+    network_mode: "service:application-lb-master"
+    cap_add:
+      - NET_ADMIN
+      - NET_BROADCAST
+      - NET_RAW
+    restart: unless-stopped
+    depends_on:
+      application-lb-master:
+        condition: service_started
+
+  application-keepalived-backup:
+    build:
+      context: ./keepalived
+      args:
+        KEEPALIVED_CONFIG: application-backup.conf
+    network_mode: "service:application-lb-backup"
+    cap_add:
+      - NET_ADMIN
+      - NET_BROADCAST
+      - NET_RAW
+    restart: unless-stopped
+    depends_on:
+      application-lb-backup:
+        condition: service_started
+
+  app1:
+    build: ./application
+    environment: &application-environment
+      DB_HOST: galera1
+      DB_PORT: 3306
+      DB_NAME: ${CATALOG_DB_NAME:?Set CATALOG_DB_NAME in .env}
+      DB_USER: ${CATALOG_DB_USER:?Set CATALOG_DB_USER in .env}
+      DB_PASSWORD: ${CATALOG_DB_PASSWORD:?Set CATALOG_DB_PASSWORD in .env}
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_DB: ${MONGO_DB_NAME:?Set MONGO_DB_NAME in .env}
+      MONGO_USER: ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME in .env}
+      MONGO_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      APPLICATION_NODE: app1
+    restart: unless-stopped
+    depends_on:
+      catalog-init:
+        condition: service_completed_successfully
+    networks:
+      - application
+      - database
+
+  app2:
+    build: ./application
+    environment:
+      <<: *application-environment
+      APPLICATION_NODE: app2
+    restart: unless-stopped
+    depends_on:
+      catalog-init:
+        condition: service_completed_successfully
+    networks:
+      - application
+      - database
+
+  app3:
+    build: ./application
+    environment:
+      <<: *application-environment
+      APPLICATION_NODE: app3
+    restart: unless-stopped
+    depends_on:
+      catalog-init:
+        condition: service_completed_successfully
+    networks:
+      - application
+      - database
+
+  catalog-init:
+    build: ./application
+    command: ["node", "init-db.js"]
+    environment: *application-environment
+    volumes:
+      - ./database/catalog.sql:/app/database/catalog.sql:ro
+    restart: "no"
+    depends_on:
+      galera1:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - database
+
+  mongodb:
+    image: mongo:8
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME in .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mongosh --quiet --username \"$${MONGO_INITDB_ROOT_USERNAME}\" --password \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval 'db.adminCommand({ ping: 1 }).ok' | grep 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - database
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - database
+
+  galera1:
+    image: bitnamilegacy/mariadb-galera:11.4.7-debian-12-r3
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?Set MARIADB_ROOT_PASSWORD in .env}
+      MARIADB_DATABASE: ${CATALOG_DB_NAME:?Set CATALOG_DB_NAME in .env}
+      MARIADB_USER: ${CATALOG_DB_USER:?Set CATALOG_DB_USER in .env}
+      MARIADB_PASSWORD: ${CATALOG_DB_PASSWORD:?Set CATALOG_DB_PASSWORD in .env}
+      MARIADB_GALERA_CLUSTER_NAME: distributed-cluster
+      MARIADB_GALERA_CLUSTER_ADDRESS: gcomm://galera1,galera2,galera3
+      MARIADB_GALERA_CLUSTER_BOOTSTRAP: "yes"
+      MARIADB_GALERA_MARIABACKUP_USER: mariabackup
+      MARIADB_GALERA_MARIABACKUP_PASSWORD: ${MARIADB_BACKUP_PASSWORD:?Set MARIADB_BACKUP_PASSWORD in .env}
+    volumes:
+      - galera1-data:/bitnami/mariadb
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p\"$${MARIADB_ROOT_PASSWORD}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    networks:
+      - database
+
+  galera2:
+    image: bitnamilegacy/mariadb-galera:11.4.7-debian-12-r3
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?Set MARIADB_ROOT_PASSWORD in .env}
+      MARIADB_GALERA_CLUSTER_NAME: distributed-cluster
+      MARIADB_GALERA_CLUSTER_ADDRESS: gcomm://galera1,galera2,galera3
+      MARIADB_GALERA_CLUSTER_BOOTSTRAP: "no"
+      MARIADB_GALERA_MARIABACKUP_USER: mariabackup
+      MARIADB_GALERA_MARIABACKUP_PASSWORD: ${MARIADB_BACKUP_PASSWORD:?Set MARIADB_BACKUP_PASSWORD in .env}
+    volumes:
+      - galera2-data:/bitnami/mariadb
+    depends_on:
+      galera1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p\"$${MARIADB_ROOT_PASSWORD}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    networks:
+      - database
+
+  galera3:
+    image: bitnamilegacy/mariadb-galera:11.4.7-debian-12-r3
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?Set MARIADB_ROOT_PASSWORD in .env}
+      MARIADB_GALERA_CLUSTER_NAME: distributed-cluster
+      MARIADB_GALERA_CLUSTER_ADDRESS: gcomm://galera1,galera2,galera3
+      MARIADB_GALERA_CLUSTER_BOOTSTRAP: "no"
+      MARIADB_GALERA_MARIABACKUP_USER: mariabackup
+      MARIADB_GALERA_MARIABACKUP_PASSWORD: ${MARIADB_BACKUP_PASSWORD:?Set MARIADB_BACKUP_PASSWORD in .env}
+    volumes:
+      - galera3-data:/bitnami/mariadb
+    depends_on:
+      galera1:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p\"$${MARIADB_ROOT_PASSWORD}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    networks:
+      - database
+
+  nagios:
+    image: jasonrivers/nagios:latest
+    ports:
+      - "8088:80"
+    environment:
+      NAGIOSADMIN_USER: nagiosadmin
+      NAGIOSADMIN_PASS: ${NAGIOSADMIN_PASSWORD:?Set NAGIOSADMIN_PASSWORD in .env}
+    volumes:
+      - ./nagios/architecture.cfg:/opt/nagios/etc/objects/localhost.cfg:ro
+    depends_on:
+      - presentation-lb-master
+      - presentation-lb-backup
+      - presentation-keepalived-master
+      - presentation-keepalived-backup
+      - web1
+      - web2
+      - web3
+      - application-lb-master
+      - application-lb-backup
+      - application-keepalived-master
+      - application-keepalived-backup
+      - app1
+      - app2
+      - app3
+      - catalog-init
+      - galera1
+      - galera2
+      - galera3
+      - mongodb
+      - redis
+    networks:
+      - edge
+      - application
+      - database
+
+volumes:
+  galera1-data:
+  galera2-data:
+  galera3-data:
+  mongodb-data:
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+  application:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+  database:
+    internal: true

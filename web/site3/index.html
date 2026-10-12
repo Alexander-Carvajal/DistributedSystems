@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Website node 3</title>
+  <link rel="stylesheet" href="/catalog.css">
+</head>
+<body>
+  <h1>Website node 3</h1>
+  <section aria-labelledby="api-explorer-title">
+    <h2 id="api-explorer-title">API explorer</h2>
+    <label for="api-endpoint">Endpoint</label>
+    <select id="api-endpoint">
+      <option value="/products/cheapest">GET /products/cheapest — cheapest products</option>
+      <option value="/products/ST-001/reviews">GET /products/ST-001/reviews — product reviews</option>
+      <option value="/">GET / — API information</option>
+      <option value="/health">GET /health — service health</option>
+    </select>
+    <button id="query-api" type="button">Query endpoint</button>
+    <button id="clear-cache" type="button">Clear Redis catalog cache</button>
+    <p id="api-result-status" role="status"></p>
+    <ol id="api-trace" class="pipeline" aria-label="API explorer request pipeline"></ol>
+    <pre id="api-result" aria-live="polite"></pre>
+  </section>
+  <section aria-labelledby="request-flow-title">
+    <h2 id="request-flow-title">Live request traces</h2>
+    <p>Each pipeline shows the components used by its API request.</p>
+    <h3>Cheapest products</h3>
+    <ol id="products-trace" class="pipeline" aria-label="Cheapest products request pipeline"></ol>
+    <h3>Product reviews (ST-001)</h3>
+    <ol id="reviews-trace" class="pipeline" aria-label="Product reviews request pipeline"></ol>
+  </section>
+  <h2>Ten cheapest products</h2>
+  <p id="status">Loading products...</p>
+  <ol id="products"></ol>
+  <h2>Recent product reviews</h2>
+  <p id="reviews-status">Loading reviews...</p>
+  <ul id="reviews"></ul>
+  <script src="/catalog.js" defer></script>
+</body>
+</html>

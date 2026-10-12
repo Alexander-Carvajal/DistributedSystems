@@ -1,0 +1,14 @@
+{
+  "name": "store-catalog-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "mongodb": "^6.17.0",
+    "mysql2": "^3.14.1",
+    "redis": "^5.5.6"
+  }
+}
