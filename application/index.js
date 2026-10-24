@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
-import { MongoClient } from "mongodb";
 import mysql from "mysql2/promise";
-import { createClient } from "redis";
+import Redis from "ioredis";
+import { createMongoClient } from "./db-clients.js";
 
 const required = (name) => {
   const value = process.env[name];
@@ -18,26 +18,27 @@ const pool = mysql.createPool({
   user: required("DB_USER"),
   password: required("DB_PASSWORD"),
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: Number(process.env.DB_POOL_LIMIT || 5),
+  connectTimeout: 5000,
+  queueLimit: 50,
 });
 
-const mongo = new MongoClient(
-  `mongodb://${required("MONGO_HOST")}:${Number(process.env.MONGO_PORT || 27017)}/${encodeURIComponent(required("MONGO_DB"))}`,
-  {
-    auth: {
-      username: required("MONGO_USER"),
-      password: required("MONGO_PASSWORD"),
-    },
-    authSource: "admin",
-  },
-);
-const redis = createClient({
-  socket: {
-    host: required("REDIS_HOST"),
-    port: Number(process.env.REDIS_PORT || 6379),
-  },
+const mongo = createMongoClient();
+const redis = new Redis({
+  sentinels: required("REDIS_SENTINELS").split(",").map((endpoint) => {
+    const [host, port] = endpoint.trim().split(":");
+    return { host, port: Number(port) };
+  }),
+  name: required("REDIS_MASTER_NAME"),
+  password: required("REDIS_PASSWORD"),
+  sentinelPassword: required("REDIS_PASSWORD"),
+  connectTimeout: 2000,
+  maxRetriesPerRequest: 1,
+  enableOfflineQueue: false,
+  retryStrategy: (attempt) => Math.min(attempt * 250, 3000),
+  sentinelRetryStrategy: (attempt) => Math.min(attempt * 250, 3000),
 });
-redis.on("error", (error) => console.error("Redis client error:", error));
+redis.on("error", (error) => console.error("Redis cache unavailable:", error.message));
 
 class HttpError extends Error {
   constructor(statusCode, message, trace) {
@@ -74,7 +75,7 @@ const sendJson = (response, statusCode, payload, trace = []) => {
 };
 
 const start = async () => {
-  await Promise.all([mongo.connect(), redis.connect()]);
+  await mongo.connect();
   const reviews = mongo.db(required("MONGO_DB")).collection("product_reviews");
   const productsCacheKey = "store:products:cheapest";
   const server = createServer((request, response) => {
@@ -88,8 +89,25 @@ const start = async () => {
       const pathname = new URL(request.url, "http://localhost").pathname;
 
       if (request.method === "GET" && pathname === "/health") {
-        await Promise.all([pool.query("SELECT 1"), mongo.db().command({ ping: 1 }), redis.ping()]);
-        sendJson(response, 200, { status: "ok" }, [...trace, "galera1", "mongodb", "redis"]);
+        const [databaseHealth, mongoHealth] = await Promise.allSettled([
+          pool.query("SELECT 1"),
+          mongo.db(required("MONGO_DB")).command({ ping: 1 }),
+        ]);
+        if (databaseHealth.status === "rejected" || mongoHealth.status === "rejected") {
+          throw new Error("A required database dependency is unavailable");
+        }
+        let cache = "available";
+        try {
+          await redis.ping();
+        } catch {
+          cache = "unavailable; cache bypass enabled";
+        }
+        sendJson(
+          response,
+          200,
+          { status: "ok", cache },
+          [...trace, required("DB_ROUTER_NAME"), "mongodb replica set", `redis ${cache}`],
+        );
         return;
       }
 
@@ -103,26 +121,46 @@ const start = async () => {
       }
 
       if (request.method === "GET" && pathname === "/products/cheapest") {
-        trace.push("redis");
-        const cached = await redis.get(productsCacheKey);
+        trace.push("redis (cache lookup)");
+        let cached;
+        let cacheAvailable = true;
+        try {
+          cached = await redis.get(productsCacheKey);
+        } catch (error) {
+          cacheAvailable = false;
+          trace[trace.length - 1] = "redis unavailable (cache bypass)";
+          console.error("Cache lookup failed; querying Galera directly:", error.message);
+        }
         if (cached) {
-          trace.push("cache hit");
+          trace[trace.length - 1] = "redis (cache hit)";
           sendJson(response, 200, JSON.parse(cached), trace);
           return;
         }
-        trace[trace.length - 1] = "redis (cache miss)";
-        trace.push("galera1");
+        if (cacheAvailable) trace[trace.length - 1] = "redis (cache miss)";
+        trace.push(required("DB_ROUTER_NAME"));
         const [products] = await pool.execute(
           "SELECT id, sku, name, description, price FROM products ORDER BY price ASC, id ASC LIMIT 10",
         );
-        trace.push("redis (cache write)");
-        await redis.set(productsCacheKey, JSON.stringify(products), { EX: 60 });
+        if (cacheAvailable) {
+          try {
+            await redis.set(productsCacheKey, JSON.stringify(products), "EX", 60);
+            trace.push("redis (cache write, TTL 60s)");
+          } catch (error) {
+            trace.push("redis unavailable (cache write skipped)");
+            console.error("Cache write failed; returning database result:", error.message);
+          }
+        }
         sendJson(response, 200, products, trace);
         return;
       }
 
       if (request.method === "POST" && pathname === "/cache/clear") {
-        const removed = await redis.del(productsCacheKey);
+        let removed;
+        try {
+          removed = await redis.del(productsCacheKey);
+        } catch {
+          throw new HttpError(503, "Redis cache is unavailable");
+        }
         sendJson(
           response,
           200,
@@ -209,7 +247,7 @@ const start = async () => {
 
   const shutdown = () => {
     server.close(() => {
-      void Promise.all([pool.end(), mongo.close(), redis.quit()]).then(() => process.exit(0));
+        void Promise.allSettled([pool.end(), mongo.close(), redis.quit()]).then(() => process.exit(0));
     });
   };
   process.on("SIGINT", shutdown);

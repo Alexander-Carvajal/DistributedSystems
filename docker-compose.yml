@@ -183,18 +183,22 @@ services:
   app1:
     build: ./application
     environment: &application-environment
-      DB_HOST: galera1
+      DB_HOST: database-proxy
       DB_PORT: 3306
+      DB_ROUTER_NAME: database-proxy
+      DB_POOL_LIMIT: ${DB_POOL_LIMIT:-5}
       DB_NAME: ${CATALOG_DB_NAME:?Set CATALOG_DB_NAME in .env}
       DB_USER: ${CATALOG_DB_USER:?Set CATALOG_DB_USER in .env}
       DB_PASSWORD: ${CATALOG_DB_PASSWORD:?Set CATALOG_DB_PASSWORD in .env}
-      MONGO_HOST: mongodb
-      MONGO_PORT: 27017
+      MONGO_HOSTS: mongodb1:27017,mongodb2:27017,mongodb3:27017
+      MONGO_REPLICA_SET: store-rs
       MONGO_DB: ${MONGO_DB_NAME:?Set MONGO_DB_NAME in .env}
-      MONGO_USER: ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME in .env}
-      MONGO_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      MONGO_POOL_SIZE: ${MONGO_POOL_SIZE:-10}
+      MONGO_USER: ${MONGO_APP_USERNAME:?Set MONGO_APP_USERNAME in .env}
+      MONGO_PASSWORD: ${MONGO_APP_PASSWORD:?Set MONGO_APP_PASSWORD in .env}
+      REDIS_SENTINELS: redis-sentinel1:26379,redis-sentinel2:26379,redis-sentinel3:26379
+      REDIS_MASTER_NAME: store-cache
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
       APPLICATION_NODE: app1
     restart: unless-stopped
     depends_on:
@@ -238,22 +242,33 @@ services:
       - ./database/catalog.sql:/app/database/catalog.sql:ro
     restart: "no"
     depends_on:
-      galera1:
+      database-proxy:
+        condition: service_started
+      galera3:
         condition: service_healthy
-      mongodb:
+      mongo-init:
+        condition: service_completed_successfully
+      redis-sentinel1:
         condition: service_healthy
-      redis:
+      redis-sentinel2:
+        condition: service_healthy
+      redis-sentinel3:
         condition: service_healthy
     networks:
       - database
 
-  mongodb:
+  mongodb1:
     image: mongo:8
+    entrypoint: ["bash", "/usr/local/bin/mongo-keyfile-entrypoint.sh"]
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME in .env}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
     volumes:
       - mongodb-data:/data/db
+      - ./database/mongo-keyfile-entrypoint.sh:/usr/local/bin/mongo-keyfile-entrypoint.sh:ro
+    secrets:
+      - mongodb-keyfile
+    restart: unless-stopped
     healthcheck:
       test:
         [
@@ -267,13 +282,205 @@ services:
     networks:
       - database
 
-  redis:
-    image: redis:7-alpine
+  mongodb2:
+    image: mongo:8
+    entrypoint: ["bash", "/usr/local/bin/mongo-keyfile-entrypoint.sh"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME in .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
+    volumes:
+      - mongodb2-data:/data/db
+      - ./database/mongo-keyfile-entrypoint.sh:/usr/local/bin/mongo-keyfile-entrypoint.sh:ro
+    secrets:
+      - mongodb-keyfile
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test:
+        [
+          "CMD-SHELL",
+          "mongosh --quiet --username \"$${MONGO_INITDB_ROOT_USERNAME}\" --password \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval 'db.adminCommand({ ping: 1 }).ok' | grep 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - database
+
+  mongodb3:
+    image: mongo:8
+    entrypoint: ["bash", "/usr/local/bin/mongo-keyfile-entrypoint.sh"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME in .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
+    volumes:
+      - mongodb3-data:/data/db
+      - ./database/mongo-keyfile-entrypoint.sh:/usr/local/bin/mongo-keyfile-entrypoint.sh:ro
+    secrets:
+      - mongodb-keyfile
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mongosh --quiet --username \"$${MONGO_INITDB_ROOT_USERNAME}\" --password \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval 'db.adminCommand({ ping: 1 }).ok' | grep 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks:
+      - database
+
+  mongo-init:
+    image: mongo:8
+    command:
+      [
+        "mongosh",
+        "--quiet",
+        "--host",
+        "mongodb1",
+        "--username",
+        "${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME in .env}",
+        "--password",
+        "${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}",
+        "--authenticationDatabase",
+        "admin",
+        "--file",
+        "/scripts/init-mongo-replica.js",
+      ]
+    environment:
+      MONGO_DB_NAME: ${MONGO_DB_NAME:?Set MONGO_DB_NAME in .env}
+      MONGO_APP_USERNAME: ${MONGO_APP_USERNAME:?Set MONGO_APP_USERNAME in .env}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:?Set MONGO_APP_PASSWORD in .env}
+    volumes:
+      - ./database/init-mongo-replica.js:/scripts/init-mongo-replica.js:ro
+    restart: "no"
+    depends_on:
+      mongodb1:
+        condition: service_healthy
+      mongodb2:
+        condition: service_healthy
+      mongodb3:
+        condition: service_healthy
+    networks:
+      - database
+
+  redis-primary:
+    image: redis:7-alpine
+    entrypoint: ["sh", "/usr/local/bin/server-entrypoint.sh"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+      REDIS_ROLE: primary
+    volumes:
+      - redis-primary-data:/data
+      - ./redis/server-entrypoint.sh:/usr/local/bin/server-entrypoint.sh:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping 2>/dev/null | grep -q PONG"]
       interval: 10s
       timeout: 3s
       retries: 5
+    networks:
+      database:
+        ipv4_address: 172.32.0.10
+
+  redis-replica:
+    image: redis:7-alpine
+    entrypoint: ["sh", "/usr/local/bin/server-entrypoint.sh"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+      REDIS_ROLE: replica
+    volumes:
+      - redis-replica-data:/data
+      - ./redis/server-entrypoint.sh:/usr/local/bin/server-entrypoint.sh:ro
+    restart: unless-stopped
+    depends_on:
+      redis-primary:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping 2>/dev/null | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      database:
+        ipv4_address: 172.32.0.11
+
+  redis-sentinel1:
+    image: redis:7-alpine
+    entrypoint: ["sh", "/usr/local/bin/sentinel-entrypoint.sh"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    volumes:
+      - redis-sentinel1-data:/data
+      - ./redis/sentinel-entrypoint.sh:/usr/local/bin/sentinel-entrypoint.sh:ro
+    restart: unless-stopped
+    depends_on:
+      redis-primary:
+        condition: service_healthy
+      redis-replica:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p 26379 -a \"$$REDIS_PASSWORD\" ping 2>/dev/null | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - database
+
+  redis-sentinel2:
+    image: redis:7-alpine
+    entrypoint: ["sh", "/usr/local/bin/sentinel-entrypoint.sh"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    volumes:
+      - redis-sentinel2-data:/data
+      - ./redis/sentinel-entrypoint.sh:/usr/local/bin/sentinel-entrypoint.sh:ro
+    restart: unless-stopped
+    depends_on:
+      redis-primary:
+        condition: service_healthy
+      redis-replica:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p 26379 -a \"$$REDIS_PASSWORD\" ping 2>/dev/null | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - database
+
+  redis-sentinel3:
+    image: redis:7-alpine
+    entrypoint: ["sh", "/usr/local/bin/sentinel-entrypoint.sh"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    volumes:
+      - redis-sentinel3-data:/data
+      - ./redis/sentinel-entrypoint.sh:/usr/local/bin/sentinel-entrypoint.sh:ro
+    restart: unless-stopped
+    depends_on:
+      redis-primary:
+        condition: service_healthy
+      redis-replica:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p 26379 -a \"$$REDIS_PASSWORD\" ping 2>/dev/null | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - database
+
+  database-proxy:
+    image: haproxy:3.2-alpine
+    volumes:
+      - ./haproxy/database.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    restart: unless-stopped
+    depends_on:
+      galera3:
+        condition: service_healthy
     networks:
       - database
 
@@ -291,6 +498,9 @@ services:
       MARIADB_GALERA_MARIABACKUP_PASSWORD: ${MARIADB_BACKUP_PASSWORD:?Set MARIADB_BACKUP_PASSWORD in .env}
     volumes:
       - galera1-data:/bitnami/mariadb
+    # Give Galera time to leave the Primary Component cleanly so its final
+    # state can be written before dependent nodes are stopped.
+    stop_grace_period: 1m
     healthcheck:
       test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p\"$${MARIADB_ROOT_PASSWORD}\""]
       interval: 10s
@@ -311,6 +521,7 @@ services:
       MARIADB_GALERA_MARIABACKUP_PASSWORD: ${MARIADB_BACKUP_PASSWORD:?Set MARIADB_BACKUP_PASSWORD in .env}
     volumes:
       - galera2-data:/bitnami/mariadb
+    stop_grace_period: 1m
     depends_on:
       galera1:
         condition: service_healthy
@@ -334,8 +545,9 @@ services:
       MARIADB_GALERA_MARIABACKUP_PASSWORD: ${MARIADB_BACKUP_PASSWORD:?Set MARIADB_BACKUP_PASSWORD in .env}
     volumes:
       - galera3-data:/bitnami/mariadb
+    stop_grace_period: 1m
     depends_on:
-      galera1:
+      galera2:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -u root -p\"$${MARIADB_ROOT_PASSWORD}\""]
@@ -374,8 +586,16 @@ services:
       - galera1
       - galera2
       - galera3
-      - mongodb
-      - redis
+      - mongodb1
+      - mongodb2
+      - mongodb3
+      - mongo-init
+      - redis-primary
+      - redis-replica
+      - redis-sentinel1
+      - redis-sentinel2
+      - redis-sentinel3
+      - database-proxy
     networks:
       - edge
       - application
@@ -386,6 +606,13 @@ volumes:
   galera2-data:
   galera3-data:
   mongodb-data:
+  mongodb2-data:
+  mongodb3-data:
+  redis-primary-data:
+  redis-replica-data:
+  redis-sentinel1-data:
+  redis-sentinel2-data:
+  redis-sentinel3-data:
 
 networks:
   edge:
@@ -399,3 +626,10 @@ networks:
         - subnet: 172.31.0.0/24
   database:
     internal: true
+    ipam:
+      config:
+        - subnet: 172.32.0.0/24
+
+secrets:
+  mongodb-keyfile:
+    file: ./secrets/mongodb-keyfile

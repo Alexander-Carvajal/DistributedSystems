@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
-import { MongoClient } from "mongodb";
 import mysql from "mysql2/promise";
+import { createMongoClient } from "./db-clients.js";
 
 const required = (name) => {
   const value = process.env[name];
@@ -33,16 +33,7 @@ const connectToMariaDb = async () => {
 };
 
 const connection = await connectToMariaDb();
-const mongo = new MongoClient(
-  `mongodb://${required("MONGO_HOST")}:${Number(process.env.MONGO_PORT || 27017)}/${encodeURIComponent(required("MONGO_DB"))}`,
-  {
-    auth: {
-      username: required("MONGO_USER"),
-      password: required("MONGO_PASSWORD"),
-    },
-    authSource: "admin",
-  },
-);
+const mongo = createMongoClient();
 
 try {
   const schema = await readFile(new URL("./database/catalog.sql", import.meta.url), "utf8");
