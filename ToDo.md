@@ -17,22 +17,25 @@ improvements in order.
 
 ## 2. Remove single-instance data dependencies
 
-- [ ] Move MongoDB to a managed service or configure a properly operated
-  replica set.
-- [ ] Move Redis to a managed service or configure an appropriate
-  high-availability mode.
-- [ ] Decide whether Redis is a disposable cache or whether its data must
-  survive failures.
+- [x] Configure MongoDB as an authenticated three-member replica set with a
+  least-privilege application user. The local demo keeps this replica set on one
+  host; production should use a managed service or separate hosts.
+- [x] Configure Redis primary/replica failover with three Redis Sentinels and
+  update the API client to discover the current primary.
+- [x] Decide that Redis is a disposable cache. Disable RDB/AOF persistence and
+  bypass the cache when Redis is unavailable.
 - [ ] Add monitoring and backup/restore plans for MariaDB.
 - [ ] Test database restore procedures regularly.
 
 ## 3. Make database routing cluster-aware
 
-- [ ] Stop connecting application nodes directly to `galera1`.
-- [ ] Add a database-aware proxy or managed endpoint for failover and
-  connection routing.
-- [ ] Define read/write routing behavior for the Galera cluster.
-- [ ] Review database connection-pool limits as application replicas scale.
+- [x] Stop connecting application nodes directly to `galera1`.
+- [x] Add a database-aware HAProxy endpoint with MySQL protocol health checks
+  and routing across available Galera nodes.
+- [x] Define reads and writes to use all healthy Galera nodes, which are
+  multi-primary; do not split reads to a separate secondary pool.
+- [x] Set a bounded per-API MariaDB connection pool and document the aggregate
+  connection budget as API replicas scale.
 
 ## 4. Improve cache behavior
 
