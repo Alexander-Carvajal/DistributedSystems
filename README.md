@@ -1,179 +1,253 @@
-# Distributed three-tier store demo
+# Sistema distribuido de tres capas
 
-The stack serves a static storefront through three Nginx presentation nodes.
-Three Node.js API nodes query a MariaDB Galera cluster through a MySQL-aware
-HAProxy database router, cache the ten cheapest products through Redis
-Sentinel, and store product reviews in a three-member MongoDB replica set.
-Keepalived provides a master/backup virtual IP for the presentation and API
-load balancers.
+Demostración de una tienda web con Nginx, Node.js, balanceo con HAProxy y Keepalived, MariaDB Galera, MongoDB y Redis Sentinel.
 
-## Architecture
+## Estado y alcance actuales
 
-```mermaid
-flowchart LR
-    browser[Browser]
+El laboratorio corre con Docker Compose en **una sola laptop**. Los nodos web, API y base de datos son contenedores separados, pero comparten Docker Engine, sistema operativo, disco y recursos de la laptop. Esto permite probar balanceo y fallas de contenedores, pero no simula la tolerancia a la falla de una máquina física.
 
-    subgraph edge["Presentation tier · edge network"]
-        plbM["HAProxy presentation master<br/>host port 80"]
-        plbB["HAProxy presentation backup"]
-        pka["Keepalived VRRP pair<br/>presentation VIP 172.30.0.250"]
-        web1["Nginx webnode1"]
-        web2["Nginx webnode2"]
-        web3["Nginx webnode3"]
-        plbM --- pka
-        plbB --- pka
-        plbM --> web1
-        plbM --> web2
-        plbM --> web3
-        plbB -. failover .-> web1
-        plbB -. failover .-> web2
-        plbB -. failover .-> web3
-    end
+Las dos máquinas virtuales Ubuntu existentes no forman parte del despliegue actual. No se han configurado ni modificado para esta topología.
 
-    subgraph appnet["Application tier · internal application network"]
-        albM["HAProxy application master"]
-        albB["HAProxy application backup"]
-        aka["Keepalived VRRP pair<br/>application VIP 172.31.0.250"]
-        app1["API app1"]
-        app2["API app2"]
-        app3["API app3"]
-        albM --- aka
-        albB --- aka
-        albM --> app1
-        albM --> app2
-        albM --> app3
-        albB -. failover .-> app1
-        albB -. failover .-> app2
-        albB -. failover .-> app3
-    end
+## Arquitectura
 
-    subgraph data["Data tier · internal database network"]
-        dbproxy["HAProxy database router<br/>MySQL checks"]
-        galera1[("MariaDB Galera node 1")]
-        galera2[("MariaDB Galera node 2")]
-        galera3[("MariaDB Galera node 3")]
-        mongo1[("MongoDB primary")]
-        mongo2[("MongoDB secondary")]
-        mongo3[("MongoDB secondary")]
-        redisPrimary[("Redis primary")]
-        redisReplica[("Redis replica")]
-        sentinels["3 Redis Sentinels<br/>quorum 2"]
-        dbproxy --> galera1
-        dbproxy --> galera2
-        dbproxy --> galera3
-        galera1 <--> galera2
-        galera2 <--> galera3
-        galera3 <--> galera1
-        mongo1 --> mongo2
-        mongo1 --> mongo3
-        sentinels -. monitor / promote .-> redisPrimary
-        sentinels -. monitor / promote .-> redisReplica
-        redisPrimary -->|replication| redisReplica
-    end
+![Diagrama de la arquitectura actual](docs/arquitectura-actual.jpg)
 
-    browser -->|"HTTP :80"| plbM
-    web1 -->|"API via VIP"| aka
-    web2 -->|"API via VIP"| aka
-    web3 -->|"API via VIP"| aka
-    app1 -->|"Redis Sentinel client"| sentinels
-    app2 -->|"Redis Sentinel client"| sentinels
-    app3 -->|"Redis Sentinel client"| sentinels
-    app1 -->|"SQL reads and writes"| dbproxy
-    app2 -->|"SQL reads and writes"| dbproxy
-    app3 -->|"SQL reads and writes"| dbproxy
-    app1 -->|"replica-set reads/writes"| mongo1
-    app2 -->|"replica-set reads/writes"| mongo1
-    app3 -->|"replica-set reads/writes"| mongo1
-```
+Flujo principal:
 
-Product-list requests check Redis first; a cache miss queries MariaDB and then
-populates Redis. Review requests use MongoDB, with MariaDB used to verify the
-product before a review is inserted. In this single-host Compose setup, host
-port 80 is published by the presentation master container; the presentation
-VIP does not move Docker's host-port mapping during failover.
+1. El navegador accede a `http://localhost/`, publicado en el puerto 80.
+2. El contenedor `presentation-entry` envía el tráfico al VIP de presentación `172.30.0.250:80`.
+3. El par HAProxy de presentación, supervisado por Keepalived, balancea las solicitudes entre `web1`, `web2` y `web3`.
+4. Las solicitudes `/api/*` de Nginx se envían al VIP de aplicación `172.31.0.250:8080`.
+5. El par HAProxy de aplicación balancea entre `app1`, `app2` y `app3`.
+6. La API consulta MariaDB mediante `database-proxy`, lee y escribe reseñas en el replica set MongoDB, y consulta Redis mediante Sentinel para la caché del catálogo.
 
-## Run locally
+Los VIPs viven en las redes internas de Docker. En este Compose local, el puerto 80 del host lo publica `presentation-entry`; Docker no mueve ese mapeo cuando Keepalived transfiere el VIP. Por ello, la continuidad de acceso desde el host al detener el balanceador de presentación no está garantizada por esta topología.
 
-1. Run `./scripts/prepare-local.ps1` in PowerShell. It creates local passwords
-   for the MongoDB application user and Redis, plus the ignored replica-set
-   keyfile. Review `.env` and replace the example passwords.
-2. Start the stack with `docker compose up --build`.
-3. Open `http://localhost/` for the storefront and
-   `http://localhost:8088/` for Nagios.
+### Redes Docker
 
-For a normal stop and restart, let `docker compose down` finish before running
-`docker compose up -d` again. The Galera services have a one-minute shutdown
-grace period, and their dependencies stop the nodes in sequence so `galera1`
-is the last node shut down and can be marked safe for the next bootstrap. Do
-not use `docker compose down -v` unless you intend to delete the database data.
+| Red | Subred | Componentes principales |
+|---|---|---|
+| `edge` | `172.30.0.0/24` | Entrada, balanceadores de presentación, nodos web y herramientas del laboratorio |
+| `application` | `172.31.0.0/24` | Nginx, balanceadores de aplicación y API |
+| `database` | `172.32.0.0/24` | API, proxy de Galera, MariaDB, MongoDB y Redis |
 
-The product endpoint is `http://localhost/api/products/cheapest`; it returns
-JSON sorted by ascending price. The storefront calls this endpoint and renders
-the returned products. `mongo-init` initializes the MongoDB replica set and
-least-privilege application user. Schema and sample data setup are idempotently
-performed by `catalog-init` after the database router and dependencies start.
+Puertos disponibles en la laptop:
 
-The storefront also displays a live request pipeline for its product and
-review API requests. The API's `X-Request-Trace` response header records the
-presentation load balancer, selected web node, application load balancer,
-application node, and the actual data stores touched by that request.
-The storefront API explorer menu can query `/`, `/health`,
-`/products/cheapest`, and `/products/ST-001/reviews`.
+| URL | Uso |
+|---|---|
+| `http://localhost/` | Tienda web y API detrás de la entrada |
+| `http://localhost:8090/` | Dashboard de pruebas |
+| `http://localhost:8088/` | Nagios; usuario predeterminado `nagiosadmin`, contraseña definida en `.env` |
 
-Use the storefront's API explorer menu to query the product, review, service
-information, and health endpoints. Its **Clear Redis catalog cache** button
-calls `POST /api/cache/clear`, which deletes only the cheapest-products cache
-entry; the next catalog request refills it from MariaDB.
+## Mejoras implementadas
 
-The application uses Redis as a **disposable cache** for the cheapest-products
-response for 60 seconds. Redis RDB and AOF persistence are disabled; loss of
-cache contents is safe because the API reads through to Galera and repopulates
-the cache. Sentinel monitors one primary, one replica, and a quorum of two
-Sentinels for failover. If Redis is unavailable, product requests bypass the
-cache; `/health` reports the cache state without marking the API unhealthy.
-MongoDB stores reviews in a three-member replica set; the API authenticates as
-a user with `readWrite` permissions only on the reviews database. Use
-`GET /api/products/ST-001/reviews` to read reviews or send JSON such as
-`{"reviewer":"Taylor","rating":5,"comment":"Great bag."}` to
-`POST /api/products/ST-001/reviews` to add one. The initialization service
-creates the review index and inserts sample reviews idempotently. MongoDB,
-Redis, and the database router are private to the database network and are not
-published on host ports.
+El trabajo cubre los puntos 2.1, 2.2, 2.3 y todo el punto 3 de `ToDo.md`.
 
-The HAProxy database router performs MySQL protocol health checks and balances
-connections across available Galera nodes. Since Galera is multi-primary, both
-reads and writes use all healthy nodes; this demo does not split reads to
-secondaries. Each API node has a bounded MariaDB pool of five connections by
-default. With three API nodes, that allows at most 15 application connections
-through the router; adjust `DB_POOL_LIMIT` with the planned API replica count
-and MariaDB connection budget in mind.
+### MongoDB — ToDo 2.1
 
-These replicas run as containers on one Docker host. The failover exercises
-demonstrate recovery from individual service/container failures, but do not
-protect the data tier from a laptop, Docker Desktop, or host failure.
+- Tres instancias forman el replica set autenticado `store-rs`.
+- La comunicación interna del replica set usa un keyfile.
+- `mongo-init` configura el replica set y crea un usuario de aplicación con permisos `readWrite` limitados a la base de datos de reseñas.
+- La inicialización crea el índice e inserta reseñas de ejemplo de forma idempotente.
+- La API se conecta a los tres miembros como semillas y el driver sigue al primario elegido por MongoDB.
 
-To inspect MongoDB replica-set status from the primary:
+La replicación está dentro de un solo host; una réplica no protege contra la pérdida de la laptop. No se han documentado ni probado respaldos y restauraciones de MongoDB.
 
-```powershell
-docker compose exec mongodb1 sh -c 'mongosh --quiet --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "rs.status().members.map(({name,stateStr}) => ({name,stateStr}))"'
-```
+### Redis — ToDo 2.2 y 2.3
 
-To inspect which Redis node Sentinel currently considers primary:
+- Redis usa un nodo primario, una réplica y tres procesos Sentinel; el quorum configurado es dos.
+- La API pregunta a Sentinel cuál es el primario actual en vez de fijar la conexión a una instancia.
+- Redis es una caché desechable para los diez productos más baratos. Las respuestas se guardan por 60 segundos.
+- RDB y AOF están deshabilitados. Si la caché no está disponible, la API consulta MariaDB y `/api/health` informa el estado de la caché sin declarar toda la API no saludable.
+- `POST /api/cache/clear` borra únicamente la clave de caché del catálogo; la siguiente lectura la vuelve a cargar desde MariaDB.
 
-```powershell
-docker compose exec redis-sentinel1 sh -c 'redis-cli -p 26379 -a "$REDIS_PASSWORD" SENTINEL get-master-addr-by-name store-cache'
-```
+No se ha ejecutado una prueba de failover de Redis en esta ronda. Las instancias y Sentinels también comparten el mismo host.
 
-## Load-balancer failover
+### MariaDB Galera — ToDo 3 completo
 
-The presentation VIP is `172.30.0.250` and the application VIP is
-`172.31.0.250`. Each Keepalived pair shares its HAProxy container's network
-namespace, uses unicast VRRP, and tracks the local HAProxy listener. Application
-requests from Nginx use the floating application VIP.
+- Tres nodos MariaDB se unen al clúster `distributed-cluster`.
+- La aplicación ya no apunta directamente a `galera1`: usa el contenedor `database-proxy`.
+- HAProxy revisa el protocolo MySQL, retira nodos no disponibles y distribuye conexiones entre los nodos Galera saludables con `leastconn`.
+- Galera es multi-primary; esta demostración manda lecturas y escrituras a cualquier nodo saludable, sin separar lecturas a una piscina de secundarios.
+- Cada nodo API usa un pool MariaDB limitado a cinco conexiones por defecto. Con tres nodos API, el máximo agregado normal es 15 conexiones; debe ajustarse junto con el número de réplicas y el límite de conexiones de MariaDB.
 
-Compose publishes host port 80 on the presentation master container. Docker's
-published-port mapping targets that specific container, so on a single-host
-Compose deployment the VIP failover does not move the host port mapping. The
-presentation VIP is available to other containers on the edge network; expose
-it through a host/network setup that supports floating VIPs if host-level
-failover is required.
+### Inicio y apagado ordenados
+
+- Cada nodo Galera tiene un período de gracia de apagado de un minuto. Las dependencias de Compose hacen que los nodos se detengan en orden inverso y que `galera1` se detenga al final.
+- Conviene esperar a que `docker compose down` termine antes de iniciar otra vez la pila. Si un nodo Galera necesita el período completo de gracia, el apagado puede tardar más de un minuto en total.
+- `.gitattributes` fija finales de línea LF para los scripts `.sh`; esto evita errores de intérprete al montar scripts en contenedores Linux desde Windows.
+- No usar `docker compose down -v` para un apagado normal: elimina los volúmenes de datos de las bases y también puede borrar los resultados del laboratorio si se ejecuta desde la carpeta de pruebas.
+
+## Requisitos
+
+- Docker Desktop con contenedores Linux y Docker Compose v2.
+- PowerShell para preparar el archivo local `.env`.
+- No es necesario instalar ApacheBench, Siege, JMeter ni Chaos Monkey en Windows: se ejecutan en contenedores.
+
+No subir `.env` ni secretos locales a GitHub. Usa `.env.example` como referencia y conserva el keyfile de MongoDB como secreto local ignorado por Git.
+
+## Iniciar el proyecto
+
+Desde la raíz del repositorio:
+
+<pre><code>./scripts/prepare-local.ps1
+docker compose up -d --build
+docker compose ps</code></pre>
+
+El script crea credenciales locales para el usuario de MongoDB y Redis y prepara el keyfile del replica set. Revisa `.env` y reemplaza las contraseñas de ejemplo. Espera a que las comprobaciones de salud terminen; la primera inicialización de MongoDB y Galera puede tardar.
+
+Para inspeccionar logs en vivo:
+
+<pre><code>docker compose logs -f</code></pre>
+
+`Ctrl+C` detiene el seguimiento de los logs, pero no apaga los contenedores.
+
+Después de iniciar la pila principal, inicia el laboratorio de pruebas:
+
+<pre><code>docker compose -f resilience-lab/docker-compose.yml up -d --build</code></pre>
+
+Abre `http://localhost:8090/`. El dashboard permite lanzar escenarios con ApacheBench, Siege, JMeter y Chaos Monkey. La pila principal debe estar activa porque el laboratorio se conecta a su red Docker `edge`.
+
+## Comprobar los servicios y endpoints
+
+En PowerShell:
+
+<pre><code>docker compose ps
+Invoke-RestMethod http://localhost/api/health | ConvertTo-Json -Depth 5
+Invoke-RestMethod http://localhost/api/products/cheapest
+Invoke-RestMethod http://localhost/api/products/ST-001/reviews</code></pre>
+
+Endpoints principales:
+
+| Método | Endpoint | Función |
+|---|---|---|
+| GET | `/api/health` | Estado de API y caché |
+| GET | `/api/products/cheapest` | Diez productos ordenados por precio; usa Redis y MariaDB |
+| POST | `/api/cache/clear` | Borra la entrada de caché del catálogo |
+| GET | `/api/products/ST-001/reviews` | Lee reseñas de MongoDB |
+| POST | `/api/products/ST-001/reviews` | Agrega una reseña; ejemplo de JSON: `{"reviewer":"Taylor","rating":5,"comment":"Great bag."}` |
+
+El escaparate incluye un explorador de API y muestra una traza en la cabecera `X-Request-Trace`, con el balanceador, el nodo web, el nodo API y los almacenes de datos usados por cada solicitud.
+
+Comandos útiles para revisar las bases:
+
+<pre><code>docker compose exec mongodb1 sh -c 'mongosh --quiet --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval "rs.status().members.map(({name,stateStr}) => ({name,stateStr}))"'
+docker compose exec redis-sentinel1 sh -c 'redis-cli -p 26379 -a "$REDIS_PASSWORD" SENTINEL get-master-addr-by-name store-cache'</code></pre>
+
+## Ejecutar el laboratorio de pruebas
+
+El plan completo está en [resilience-lab/TEST-PLAN.md](resilience-lab/TEST-PLAN.md). Para los resultados, métricas y limitaciones de la corrida del 24 de octubre de 2026, consulta también [resilience-lab/TEST-RESULTS-2026-10-24.md](resilience-lab/TEST-RESULTS-2026-10-24.md).
+
+Pruebas rápidas recomendadas en el dashboard:
+
+1. Ejecutar primero un escenario **Smoke** de ApacheBench o JMeter.
+2. Probar una carga moderada antes de aumentar usuarios o concurrencia; todas las pruebas comparten los recursos de la laptop.
+3. Ejecutar **Dry run** de Chaos Monkey antes de inyectar fallas.
+4. Mantener como máximo un contenedor víctima a la vez y volver a consultar salud después de la restauración.
+
+Los resultados del dashboard y los reportes HTML de JMeter se guardan en el volumen `results` del laboratorio. Ese volumen se conserva con `docker compose down` y se elimina si se pasa `-v`.
+
+## Pruebas ejecutadas — 24 de octubre de 2026
+
+Se corrieron pruebas funcionales, de carga breve, failover de Galera y Chaos Monkey en Docker Desktop sobre una sola laptop. Las cifras sirven como evidencia de esta corrida; no son una capacidad certificada ni un SLA de producción.
+
+### Línea base y funcionalidad
+
+| Comprobación | Resultado |
+|---|---|
+| `GET /api/health` | HTTP 200; `status=ok`; caché disponible |
+| Balanceo web y API | En nueve solicitudes, la traza alternó `webnode1`–`webnode3` y `app1`–`app3` |
+| Balanceador de presentación | Las nueve trazas reportaron `presentation-lb-master`, que estaba saludable |
+| Clúster Galera | `wsrep_cluster_size=3`; estado `Primary` |
+| Consistencia Galera | Se insertó una fila temporal por `galera1` y se leyó desde `galera2` y `galera3`; luego se eliminó la tabla de prueba |
+| Servicios | Web, API, MongoDB y Galera aparecieron saludables; Redis y Sentinel estuvieron operativos y la API reportó caché disponible |
+
+No se inspeccionó la interfaz de red para confirmar directamente la dirección VIP. La traza confirma qué balanceador atendió la solicitud, no quién poseía la VIP.
+
+### Carga y rendimiento
+
+| Herramienta / escenario | Configuración | Resultado observado |
+|---|---|---|
+| ApacheBench — smoke | 100 solicitudes a `/api/health`, concurrencia 5 | 100 completadas; 0 fallidas; 0 no-2xx; 415.98 solicitudes/s; media 12.02 ms; p95 32 ms; p99 35 ms |
+| JMeter — smoke | 5 usuarios, 15 s; salud y catálogo | 632 muestras; 0 errores; 42.70 solicitudes/s; media 7.8 ms; p95 12 ms; p99 16 ms; máximo 44 ms |
+| ApacheBench — carga corta | 2,000 solicitudes a `/api/products/cheapest`, concurrencia 20 | 2,000 completadas; 0 fallidas; 0 no-2xx; 1,252.01 solicitudes/s; media 15.97 ms; p95 35 ms; p99 52 ms |
+| JMeter durante Chaos Monkey | 20 usuarios, rampa 5 s, duración 35 s; salud y catálogo | 2,493 muestras; 0 errores HTTP; 71.65 solicitudes/s; p50 6 ms; p95 15 ms; p99 7,028 ms; máximo 7,066 ms |
+
+Durante la prueba combinada, JMeter no registró errores HTTP, pero sí un outlier cercano a siete segundos. La carga corta de ApacheBench quedó bajo el objetivo ilustrativo de p95 < 200 ms del plan; el p99 de la corrida combinada no cumplió ese objetivo. No se corrieron pruebas de carga de 10–30 minutos, soak de horas, spike, stress hasta saturación ni comparación formal de caché fría/caliente.
+
+Artefactos de la corrida, accesibles mientras el dashboard y el volumen sigan disponibles:
+
+- [ApacheBench smoke](http://localhost:8090/files/20261024-231716-90a7/console.log)
+- [JMeter smoke — reporte HTML](http://localhost:8090/files/20261024-231759-8e39/report/index.html)
+- [ApacheBench — carga corta](http://localhost:8090/files/20261024-231845-b153/console.log)
+- [JMeter con Chaos Monkey — reporte HTML](http://localhost:8090/files/20261024-232002-7529/report/index.html)
+
+### Failover sencillo de Galera
+
+Se detuvo temporalmente `galera2` mientras se enviaban 20 solicitudes a `/api/health`, espaciadas por 400 ms. Las 20 respondieron HTTP 200. Luego se inició de nuevo `galera2`; los tres miembros volvieron a estar saludables y Galera reportó tamaño 3 y estado `Primary`.
+
+Esto valida continuidad ante la pérdida de ese miembro en la topología observada. No se detuvo `galera1`, no se probaron dos fallas simultáneas y no se ejecutó la misma prueba de continuidad bajo una carga sostenida.
+
+### Chaos Engineering con Chaos Monkey
+
+Primero se ejecutó el **Dry run** para el grupo web. Chaos Monkey simuló una interrupción y restauración sin detener contenedores y obtuvo 11/11 sondas exitosas.
+
+Después se detuvo como máximo un nodo web a la vez durante 26 segundos mientras JMeter enviaba carga:
+
+| Tiempo aproximado | Contenedor detenido | Restauración reportada |
+|---:|---|---:|
+| 3.8 s | `web1` | 10.2 s |
+| 12.9 s | `web3` | 19.3 s |
+| 21.8 s | `web1` | 26.8 s |
+
+Chaos Monkey registró 29 sondas: 28 exitosas y una fallida, equivalente a 96.55% de disponibilidad en esa ventana corta. La única sonda fallida agotó el timeout de 3 s; entre las sondas exitosas, la respuesta máxima fue de aproximadamente 2 s. JMeter contó 0 errores HTTP en sus 2,493 muestras, con un outlier de alrededor de 7 s. Los contenedores se restauraron y `/api/health` respondió de nuevo con la caché disponible.
+
+- [Dry run de Chaos Monkey](http://localhost:8090/files/20261024-231936-e801/console.log)
+- [Resumen de Chaos Monkey bajo carga](http://localhost:8090/files/20261024-232002-7b3a/summary.json)
+- [Log de Chaos Monkey bajo carga](http://localhost:8090/files/20261024-232002-7b3a/console.log)
+
+### Nagios y observabilidad
+
+Nagios está publicado en el puerto 8088, pero la configuración existente no es evidencia confiable del estado de todos los servicios:
+
+- Busca hosts `mongodb` y `redis`, mientras Compose define `mongodb1`–`mongodb3`, `redis-primary`, `redis-replica` y los Sentinel.
+- Durante la corrida registró `CRITICAL/DOWN` e `Invalid hostname` para esos nombres antiguos.
+- También reportó advertencias por hosts sin contactos o grupos de contactos configurados.
+
+Las trazas `X-Request-Trace`, logs de Chaos Monkey y reportes JMeter ayudaron a reconstruir el comportamiento, pero no se midieron formalmente MTTD, MTTR, consumo de CPU/memoria ni métricas centrales. No se implementó OpenTelemetry.
+
+### Incidencias iniciales y correcciones
+
+- Una primera ejecución de ApacheBench falló al iniciar porque un script shell montado desde Windows tenía finales de línea CRLF. Se añadió `.gitattributes` con `*.sh text eol=lf` para normalizar los scripts del proyecto a LF.
+- Una primera ejecución de JMeter trató dos rutas como una sola por un salto de línea mal escapado. Se corrigió el parámetro de esa ejecución; el smoke test posterior terminó sin errores.
+- Los intentos preliminares fallidos se excluyeron de las métricas exitosas de las tablas.
+
+## Apagado correcto
+
+Primero detén el laboratorio de pruebas y después la pila principal:
+
+<pre><code>docker compose -f resilience-lab/docker-compose.yml down
+docker compose down</code></pre>
+
+Espera a que termine cada comando, en especial el apagado de Galera. No borres los volúmenes durante un apagado normal. Para volver a iniciar, usa los comandos de la sección **Iniciar el proyecto**.
+
+## Pendientes y limitaciones conocidas
+
+- **Distribución física:** mover los servicios a dos o más máquinas sigue pendiente. La topología actual no sobrevive a la pérdida de la laptop o de Docker Desktop.
+- **Entrada y VIP:** `presentation-entry` es un proxy único y el mapeo de puerto 80 del host no sigue al VIP. No se probó el failover de los pares HAProxy/Keepalived desde el host. La aplicación usa el VIP interno para enrutar `/api/*`.
+- **Proxy de Galera:** `database-proxy` es un único contenedor; aunque puede elegir entre los tres miembros Galera, su propia caída no fue probada.
+- **MongoDB y Redis:** la replicación y Sentinel están configurados, pero no se ejecutaron pruebas de caída/promoción de esos servicios en esta ronda.
+- **Chaos Monkey:** se probó únicamente el grupo `web`. Los mapeos actuales `redis` y `mongodb` del script de Chaos Monkey apuntan a nombres antiguos y no corresponden a los servicios definidos en Compose; no usar esos grupos como evidencia hasta corregir el mapeo.
+- **Fallos no ejecutados:** balanceadores master y backup, API, MongoDB, Redis, dos fallas en una capa, caída completa del host, pérdida de red, presión de CPU/memoria/disco, latencia de dependencias y recuperación tras fallar toda la pila.
+- **Duración de carga:** faltan stress, spike, soak y cargas de 10–30 minutos. Las cifras medidas no predicen la capacidad de producción.
+- **Datos y alertas:** faltan un plan de respaldo/restauración y monitorización de MariaDB, corregir Nagios, alertas de servicio y métricas centralizadas.
+- **Trazas:** la cabecera de traza es útil para la demostración, pero no sustituye trazas distribuidas con OpenTelemetry.
+
+`resilience-lab/TEST-PLAN.md` describe los escenarios pendientes con más detalle. El documento de resultados enlazado arriba conserva el registro detallado de esa ejecución.
+
+## Referencias
+
+- [Plan de pruebas](resilience-lab/TEST-PLAN.md)
+- [Resultados detallados de pruebas del 24 de octubre de 2026](resilience-lab/TEST-RESULTS-2026-10-24.md)
+- [Pendientes de arquitectura](ToDo.md)
+- [Diagrama JPG](docs/arquitectura-actual.jpg)
