@@ -24,3 +24,17 @@ credentials.json
 backups/
 **/backups/
 
+# Local development tools.
+.tools/
+
+# Terraform local state, downloaded providers and generated plans.
+**/.terraform/
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/.terraform.tfstate.lock.info
+**/*.tfplan
+**/*.tfvars
+!**/*.tfvars.example
+**/crash.log
+**/crash.*.log
+
