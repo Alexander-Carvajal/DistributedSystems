@@ -1,0 +1,42 @@
+name: Terraform
+
+on:
+  pull_request:
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches: [main]
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/terraform.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.17.1"
+      - name: Terraform format
+        run: terraform fmt -check -recursive infra/terraform
+      - name: Terraform initialize
+        run: terraform -chdir=infra/terraform/envs/dev init -backend=false -input=false
+      - name: Terraform validate
+        run: terraform -chdir=infra/terraform/envs/dev validate
+      - uses: terraform-linters/setup-tflint@v6
+      - name: TFLint
+        working-directory: infra/terraform/envs/dev
+        run: |
+          tflint --init
+          tflint -f compact
+      - name: Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infra/terraform
+          framework: terraform
+          soft_fail: false

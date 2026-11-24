@@ -78,6 +78,10 @@ const start = async () => {
   await mongo.connect();
   const reviews = mongo.db(required("MONGO_DB")).collection("product_reviews");
   const productsCacheKey = "store:products:cheapest";
+  const port = Number(process.env.PORT || 8080);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error("PORT must be an integer between 1 and 65535");
+  }
   const server = createServer((request, response) => {
     const trace = [
       request.headers["x-presentation-lb"] || "presentation-lb-unknown",
@@ -87,6 +91,24 @@ const start = async () => {
     ];
     void (async () => {
       const pathname = new URL(request.url, "http://localhost").pathname;
+
+      if (request.method === "GET" && pathname === "/healthz") {
+        sendJson(response, 200, { status: "alive" });
+        return;
+      }
+
+      if (request.method === "GET" && pathname === "/readyz") {
+        const [databaseHealth, mongoHealth] = await Promise.allSettled([
+          pool.query("SELECT 1"),
+          mongo.db(required("MONGO_DB")).command({ ping: 1 }),
+        ]);
+        if (databaseHealth.status === "rejected" || mongoHealth.status === "rejected") {
+          sendJson(response, 503, { status: "not ready" });
+          return;
+        }
+        sendJson(response, 200, { status: "ready" });
+        return;
+      }
 
       if (request.method === "GET" && pathname === "/health") {
         const [databaseHealth, mongoHealth] = await Promise.allSettled([
@@ -204,7 +226,7 @@ const start = async () => {
         ) {
           throw new HttpError(400, "Provide reviewer, rating (1-5), and comment within the allowed lengths");
         }
-        trace.push("galera1 (product lookup)");
+        trace.push(`${required("DB_ROUTER_NAME")} (product lookup)`);
         const [matches] = await pool.execute("SELECT 1 FROM products WHERE sku = ? LIMIT 1", [
           reviewMatch[1],
         ]);
@@ -241,8 +263,8 @@ const start = async () => {
     });
   });
 
-  server.listen(8080, "0.0.0.0", () => {
-    console.log("Store catalog API listening on port 8080");
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`Store catalog API listening on port ${port}`);
   });
 
   const shutdown = () => {
