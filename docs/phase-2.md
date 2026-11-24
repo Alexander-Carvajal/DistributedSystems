@@ -16,6 +16,15 @@ El laboratorio usa un único nodo k3d con 8 GB asignados a Docker Desktop. Los t
 | Certificados internos | `cert-manager` v1.21.3, requerido por RabbitMQ Cluster Operator |
 
 Las imágenes de web y API usan etiquetas locales de laboratorio y `imagePullPolicy: Never`. GHCR y etiquetas por commit llegan en la fase 4.
+El `worker` se añade en la fase 3, cuando existan las colas y su código.
+
+## Verificación del 24 de noviembre de 2026
+
+- Galera `3/3`, MongoDB `1/1`, Redis `2/2`, Sentinel `1/1`, RabbitMQ Operator `1/1` y API `1/1`.
+- El Job `store-catalog-init` terminó y registró la creación del esquema SQL y las reseñas de ejemplo.
+- `/`, `/catalog.js`, `/api/healthz`, `/api/readyz`, `/api/health`, `/api/products/cheapest` y la lectura de reseñas respondieron HTTP 200.
+- La API escribió y leyó una reseña de prueba a través de Ingress; después se borró y quedó la única reseña de ejemplo original.
+- Los HPA de web y API recibieron métricas de CPU. El nodo utilizó 3680 MiB de 8 GiB asignados y la unidad C: tenía cerca de 54,7 GiB libres.
 
 ## Secretos
 
@@ -59,6 +68,8 @@ kubectl rollout status deployment/store-web -n store-web --timeout=10m
 ```
 
 Al publicar estos cambios en `main`, Flux seguirá el orden `operadores → datos → catálogo → API` y reconciliará la web. El operador RabbitMQ depende por separado de cert-manager. Las imágenes y los secretos locales deben existir antes de activar el camino GitOps.
+
+La NetworkPolicy de MongoDB permite al agente consultar el API server en `10.43.0.1:443` y en el backend actual `172.18.0.3:6443`. kube-proxy traduce el Service a ese backend. Si se recrea el clúster y cambia la IP interna del nodo, consultar `kubectl get endpoints kubernetes -n default` y actualizar el `/32` en `deploy/overlays/dev/data/network-policy.yaml` antes de aplicar el overlay. El primer arranque puede tardar más de 20 minutos por las descargas de MongoDB.
 
 ## Límites del laboratorio
 
