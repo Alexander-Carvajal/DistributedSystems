@@ -11,8 +11,8 @@ El plan original propone tres nodos K3s en máquinas virtuales con Terraform. Es
 - El nodo, CoreDNS, almacenamiento local, metrics-server y Traefik se comprobaron como listos el 23 de noviembre de 2026.
 - Con solo los componentes base, el nodo consumía aproximadamente 710 MiB de RAM. Docker Desktop tiene asignados unos 8 GB; este valor crecerá al desplegar la aplicación.
 - Terraform v1.17.1 está instalado en `.tools/terraform/terraform.exe`. El entorno `infra/terraform/envs/dev` usa estado local ignorado por Git y administra cinco namespaces. `terraform validate` pasó y un segundo `plan` no mostró cambios.
-- Los cuatro controladores de Flux v2.10.1 están listos. El `GitRepository` público `flux-system` leyó `main` correctamente sin credenciales. La Kustomization de sincronización está preparada en `clusters/dev/flux-system/sync.yaml`, pero aún no se aplicó: la ruta `clusters/dev/` debe estar publicada en GitHub antes.
-- `terraform fmt`, `terraform validate`, TFLint y Checkov finalizaron sin hallazgos en la configuración local. La comprobación de GitHub Actions queda pendiente hasta publicar el flujo.
+- Los cuatro controladores de Flux v2.10.1 están listos. El `GitRepository` público `flux-system` lee `main` sin credenciales. El 24 de noviembre de 2026 se aplicó `clusters/dev/flux-system/sync.yaml`: la Kustomization quedó `Ready` y reconcilió el commit de fusión del PR #3 (`c5617a9`).
+- `terraform fmt`, `terraform validate`, TFLint y Checkov finalizaron sin hallazgos en la configuración local. El flujo de GitHub Actions del PR #3 también terminó correctamente.
 
 ## Uso desde PowerShell
 
@@ -44,14 +44,14 @@ Para revisar la infraestructura del laboratorio:
 kubectl get gitrepository -n flux-system
 ```
 
-Una vez publicados los archivos de `clusters/dev/` en la rama `main`, activar la reconciliación con:
+La reconciliación ya está activa. Para comprobar su estado o restaurarla tras crear de nuevo el clúster:
 
 ```powershell
 kubectl apply -f clusters/dev/flux-system/sync.yaml
 kubectl get kustomizations -n flux-system
 ```
 
-El flujo `.github/workflows/terraform.yml` ejecutará `fmt`, `validate`, TFLint y Checkov en PRs y cambios de Terraform en `main`. Todavía no se ha ejecutado en GitHub.
+El flujo `.github/workflows/terraform.yml` ejecuta `fmt`, `validate`, TFLint y Checkov en PRs y cambios de Terraform en `main`.
 
 Si se trabaja desde otra copia del repositorio, descargar `k3d-windows-amd64.exe` del release v5.9.0 a `.tools/k3d.exe`, verificar que su SHA-256 es `49d0b9c796f5b8ba6f58a1dd5469e8b7b34bf9b6ce9078633eedb2789680a034`, y crear el clúster con:
 
@@ -63,6 +63,6 @@ Si se trabaja desde otra copia del repositorio, descargar `k3d-windows-amd64.exe
 ## Siguiente trabajo de la fase 1
 
 - Medir el consumo de RAM y disco al desplegar cargas representativas antes de probar tres servidores.
-- Publicar los manifiestos de `clusters/dev/` y activar la Kustomization. La instalación local usa el CLI oficial de Flux y lectura pública de Git; no usa `flux_bootstrap_git`, porque este requeriría credenciales de escritura con estado de Terraform guardado en la laptop.
+- La instalación local usa el CLI oficial de Flux y lectura pública de Git; no usa `flux_bootstrap_git`, porque este requeriría credenciales de escritura con estado de Terraform guardado en la laptop.
 - El estado remoto con bloqueo y el entorno `prod` del plan original requieren un destino externo. Se posponen mientras el proyecto sea exclusivamente un laboratorio local.
 - La red, los nodos y el almacenamiento `local-path` los administra k3d/K3s mediante `infra/k3d/lab.yaml`; Terraform administra los namespaces. No se trasladó el ciclo de vida de k3d a un proveedor comunitario de Terraform.
