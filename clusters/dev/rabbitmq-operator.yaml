@@ -1,0 +1,20 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: store-rabbitmq-operator
+  namespace: flux-system
+spec:
+  interval: 5m
+  dependsOn:
+    - name: store-cert-manager
+  path: ./deploy/platform/rabbitmq-operator
+  prune: true
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: rabbitmq-cluster-operator
+      namespace: rabbitmq-system
+  timeout: 30m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system

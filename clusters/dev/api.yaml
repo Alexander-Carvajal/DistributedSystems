@@ -1,0 +1,20 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: store-api
+  namespace: flux-system
+spec:
+  interval: 5m
+  dependsOn:
+    - name: store-catalog-init
+  path: ./deploy/overlays/dev/api
+  prune: true
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: store-api
+      namespace: store-application
+  timeout: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system

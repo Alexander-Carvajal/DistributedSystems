@@ -27,7 +27,7 @@ spec:
               app: store-api
       containers:
         - name: api
-          image: store-api:phase0
+          image: store-api:phase2
           imagePullPolicy: Never
           ports:
             - name: http

@@ -239,7 +239,7 @@ services:
     command: ["node", "init-db.js"]
     environment: *application-environment
     volumes:
-      - ./database/catalog.sql:/app/database/catalog.sql:ro
+      - ./application/database/catalog.sql:/app/database/catalog.sql:ro
     restart: "no"
     depends_on:
       database-proxy:

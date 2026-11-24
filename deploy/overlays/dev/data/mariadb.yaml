@@ -1,0 +1,64 @@
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: MariaDB
+metadata:
+  name: store-mariadb
+  namespace: store-data
+spec:
+  image: mariadb:11.4
+  rootPasswordSecretKeyRef:
+    name: store-mariadb-root
+    key: password
+  storage:
+    size: 2Gi
+    storageClassName: local-path
+  replicas: 3
+  galera:
+    enabled: true
+  resources:
+    requests:
+      cpu: 150m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+---
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: Database
+metadata:
+  name: store
+  namespace: store-data
+spec:
+  mariaDbRef:
+    name: store-mariadb
+  characterSet: utf8mb4
+  collate: utf8mb4_unicode_ci
+---
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: User
+metadata:
+  name: store-app
+  namespace: store-data
+spec:
+  mariaDbRef:
+    name: store-mariadb
+  name: store_app
+  host: "%"
+  maxUserConnections: 30
+  passwordSecretKeyRef:
+    name: store-mariadb-user
+    key: password
+---
+apiVersion: k8s.mariadb.com/v1alpha1
+kind: Grant
+metadata:
+  name: store-app
+  namespace: store-data
+spec:
+  mariaDbRef:
+    name: store-mariadb
+  privileges:
+    - ALL PRIVILEGES
+  database: store
+  table: "*"
+  username: store_app
+  host: "%"

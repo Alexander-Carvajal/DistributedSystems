@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: store-catalog-init
+  namespace: store-application
+spec:
+  backoffLimit: 12
+  activeDeadlineSeconds: 1800
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: store-api:phase2
+          imagePullPolicy: Never
+          command: [node, init-db.js]
+          envFrom:
+            - configMapRef:
+                name: store-api-config
+            - secretRef:
+                name: store-api-credentials
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault

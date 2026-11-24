@@ -1,32 +1,70 @@
-# Fase 2: cargas Kubernetes en el laboratorio local
+# Fase 2: cargas de Kubernetes en la laptop
 
-## Estado comprobado (24 de noviembre de 2026)
+El laboratorio usa un único nodo k3d con 8 GB asignados a Docker Desktop. Los tres pods de Galera, los dos de Redis y Sentinel comparten ese nodo: prueban la topología lógica, pero una falla de la laptop afecta a todos. El almacenamiento `local-path` es persistente mientras se conserva el clúster; no es almacenamiento distribuido.
 
-- La web se desplegó desde `deploy/overlays/dev/web` en `store-web`. Traefik la publica en `http://127.0.0.1:8081/`; `/` y `/catalog.js` respondieron HTTP 200.
-- El Deployment usa una imagen local sin privilegios, un Service, Ingress, sondas HTTP, solicitudes y límites de recursos, HPA, PodDisruptionBudget y una regla de distribución suave por nodo. El HPA recibió métricas de CPU.
-- `store-web` tiene una NetworkPolicy de denegación predeterminada y permisos explícitos para tráfico desde Traefik, DNS y la futura API. Después de aplicar las políticas, el pod se reinició y la web volvió a responder HTTP 200.
-- Existe un Service `store-api` sin endpoints. Hasta desplegar la API y sus dependencias, `/api/*` devuelve un error tras un tiempo de conexión limitado; la web estática continúa disponible.
-- `deploy/overlays/dev/api` genera un Deployment, ConfigMap, HPA y PodDisruptionBudget de API válidos en una prueba `kubectl apply --dry-run=server`, pero todavía no se aplicó. La API necesita secretos y servicios de datos Kubernetes reales.
-- Los volúmenes de Docker Compose permanecen intactos. Esta fase no ha migrado datos de MariaDB ni MongoDB.
+## Componentes
 
-## Uso de imágenes locales
+| Componente | Configuración de desarrollo |
+| --- | --- |
+| Entrada | Traefik en `http://127.0.0.1:8081/` |
+| Web | Deployment, Service, Ingress, HPA 1–2, PDB, sondas, límites y NetworkPolicy |
+| API | Deployment, Service, HPA 1–2, PDB, sondas y NetworkPolicy |
+| MariaDB | `mariadb-operator` 26.10.2, Galera de 3 pods, PVC de 2 GiB por pod, base y usuario creados por CRD |
+| MongoDB | `mongodb-kubernetes` 1.16.0, replica set Community de 1 miembro con PVC |
+| Redis | `redis-operator` 0.27.0, 2 pods y 1 Sentinel con PVC |
+| RabbitMQ | Cluster Operator 2.23.0 instalado; el clúster y las colas se crean en la fase 3 |
+| Certificados internos | `cert-manager` v1.21.3, requerido por RabbitMQ Cluster Operator |
 
-La imagen `store-web-site1:phase2` se construyó e importó al nodo k3d. En una recreación del clúster, volver a importar antes de aplicar los manifiestos:
+Las imágenes de web y API usan etiquetas locales de laboratorio y `imagePullPolicy: Never`. GHCR y etiquetas por commit llegan en la fase 4.
+
+## Secretos
+
+`scripts/setup-phase2-secrets.ps1` toma las contraseñas del archivo local `.env` e instala cinco Secret en `store-data` y `store-application`. No imprime valores ni los guarda en Git. Se debe ejecutar de nuevo al recrear el clúster. La gestión de secretos mediante SOPS/External Secrets pertenece a la fase 5/7.
 
 ```powershell
-docker build -t store-web-site1:phase2 --build-arg SITE=site1 ./web
-.\.tools\k3d.exe image import store-web-site1:phase2 --cluster distributed-lab --mode direct
-$env:KUBECONFIG = (Resolve-Path .tools/kubeconfig).Path
-kubectl apply -k deploy/overlays/dev/web
+./scripts/setup-phase2-secrets.ps1
 ```
 
-`clusters/dev/web.yaml` prepara a Flux para reconciliar la web desde Git una vez publicado este cambio. La publicación de imágenes en GHCR y sus etiquetas por commit corresponden a la fase 4.
+Los datos de Compose no se copian automáticamente. El Job de catálogo usa el SQL y las reseñas de ejemplo incluidos en la imagen API; los volúmenes de Compose permanecen intactos.
 
-## Trabajo que falta en la fase 2
+## Despliegue local
 
-1. Elegir y desplegar el nivel de datos en Kubernetes con límites que quepan en los 8 GB asignados a Docker Desktop. El plan original requiere operadores de MariaDB Galera y MongoDB, Redis Sentinel/operator, almacenamiento persistente y pruebas de recuperación. La variante de un nodo local no proporciona alta disponibilidad física.
-2. Ajustar los nombres de servicios del `store-api-config` a los que creen los operadores, crear los secretos en Kubernetes sin guardarlos en Git y ejecutar la inicialización del catálogo.
-3. Importar la imagen de API, aplicar `deploy/overlays/dev/api`, validar `/healthz`, `/readyz`, catálogo y reseñas por Ingress, y añadir NetworkPolicies para API y datos.
-4. Definir imágenes publicadas y un overlay de producción cuando exista un destino de producción. El almacenamiento local de k3d no sustituye un backend distribuido.
+Tras crear el clúster y las namespaces de la fase 1:
 
-El repositorio `mongodb/mongodb-kubernetes-operator` indicado por muchos ejemplos antiguos está [deprecado](https://github.com/mongodb/mongodb-kubernetes-operator); MongoDB dirige las instalaciones nuevas a [`mongodb/mongodb-kubernetes`](https://github.com/mongodb/mongodb-kubernetes). Hay que usar la documentación y CRDs del operador actual antes de crear los recursos de datos.
+```powershell
+$env:KUBECONFIG = (Resolve-Path .tools/kubeconfig).Path
+docker build -t store-web-site1:phase2 --build-arg SITE=site1 ./web
+docker build -t store-api:phase2 ./application
+.\.tools\k3d.exe image import store-web-site1:phase2 store-api:phase2 --cluster distributed-lab --mode direct
+./scripts/setup-phase2-secrets.ps1
+
+kubectl apply -k deploy/platform/cert-manager
+kubectl wait helmrelease/cert-manager -n flux-system --for=condition=Ready --timeout=20m
+kubectl apply -k deploy/platform/operators
+kubectl wait helmrelease/mariadb-operator -n flux-system --for=condition=Ready --timeout=20m
+kubectl wait helmrelease/mongodb-kubernetes -n flux-system --for=condition=Ready --timeout=20m
+kubectl wait helmrelease/redis-operator -n flux-system --for=condition=Ready --timeout=20m
+kubectl apply -k deploy/platform/rabbitmq-operator
+kubectl apply -k deploy/overlays/dev/data
+kubectl rollout status statefulset/store-mariadb -n store-data --timeout=20m
+kubectl rollout status statefulset/store-mongodb -n store-data --timeout=40m
+kubectl rollout status statefulset/store-redis -n store-data --timeout=20m
+kubectl rollout status statefulset/store-redis-sentinel -n store-data --timeout=20m
+kubectl apply -k deploy/overlays/dev/catalog-init
+kubectl wait job/store-catalog-init -n store-application --for=condition=Complete --timeout=10m
+kubectl apply -k deploy/overlays/dev/api
+kubectl apply -k deploy/overlays/dev/web
+kubectl rollout status deployment/store-api -n store-application --timeout=10m
+kubectl rollout status deployment/store-web -n store-web --timeout=10m
+```
+
+Al publicar estos cambios en `main`, Flux seguirá el orden `operadores → datos → catálogo → API` y reconciliará la web. El operador RabbitMQ depende por separado de cert-manager. Las imágenes y los secretos locales deben existir antes de activar el camino GitOps.
+
+## Límites del laboratorio
+
+- No hay tolerancia a pérdida de nodo: Galera, Redis, web y API comparten la misma laptop. Los PDB restringen drenajes voluntarios, no protegen contra apagado del equipo.
+- No se instala MetalLB: el puerto local de k3d y Traefik sustituyen el VIP en esta variante. MetalLB aplica a un clúster bare metal con una red que pueda anunciar su IP.
+- La inicialización crea datos de ejemplo; la migración de los datos de Compose, la copia de seguridad y la restauración forman parte del corte de la fase 8.
+- No se activa un overlay `prod` sin un clúster de producción ni imágenes publicadas.
+
+Fuentes: [plan original](https://github.com/tuxtter/distributedsystems/blob/main/PLATFORM-MIGRATION-PLAN.md), [mariadb-operator](https://github.com/mariadb-operator/mariadb-operator), [MongoDB Kubernetes Operator](https://github.com/mongodb/mongodb-kubernetes), [Redis Operator](https://github.com/OT-CONTAINER-KIT/redis-operator), [RabbitMQ Cluster Operator](https://www.rabbitmq.com/kubernetes/operator/install-operator).
