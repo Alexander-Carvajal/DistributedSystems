@@ -6,6 +6,9 @@ server {
 
     location /api/ {
         proxy_pass ${API_UPSTREAM}/;
+        proxy_connect_timeout 2s;
+        proxy_send_timeout 10s;
+        proxy_read_timeout 10s;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Presentation-LB $http_x_presentation_lb;

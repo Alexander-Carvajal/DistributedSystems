@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: store-api-config
+  namespace: store-application
+data:
+  PORT: "8080"
+  DB_HOST: store-mariadb.store-data.svc.cluster.local
+  DB_PORT: "3306"
+  DB_ROUTER_NAME: store-mariadb
+  DB_POOL_LIMIT: "5"
+  DB_NAME: store
+  DB_USER: store_app
+  MONGO_HOSTS: store-mongodb-0.store-mongodb.store-data.svc.cluster.local:27017
+  MONGO_REPLICA_SET: store-rs
+  MONGO_DB: store_reviews
+  MONGO_POOL_SIZE: "10"
+  MONGO_USER: store_app
+  REDIS_SENTINELS: store-redis-sentinel.store-data.svc.cluster.local:26379
+  REDIS_MASTER_NAME: store-cache
