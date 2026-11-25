@@ -9,7 +9,7 @@
   "dependencies": {
     "@opentelemetry/auto-instrumentations-node": "0.83.1",
     "amqplib": "2.4.1",
-    "ioredis": "^5.6.1",
+    "ioredis": "^6.0.0",
     "mongodb": "^6.17.0",
     "mysql2": "^3.14.1"
   }
