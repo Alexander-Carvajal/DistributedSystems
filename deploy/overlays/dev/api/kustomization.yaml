@@ -3,7 +3,7 @@ kind: Kustomization
 resources:
   - ../../../base/api
 patches:
-  - path: configmap-patch.yaml
+  - path: deployment-otel-patch.yaml
 images:
   - name: store-api
     newName: store-api
