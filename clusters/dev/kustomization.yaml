@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - flux-system
   - cert-manager.yaml
+  - security.yaml
   - operators.yaml
   - rabbitmq-operator.yaml
   - data.yaml

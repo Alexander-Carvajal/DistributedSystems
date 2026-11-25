@@ -6,6 +6,7 @@ metadata:
 spec:
   interval: 5m
   dependsOn:
+    - name: store-security
     - name: store-catalog-init
     - name: store-observability
     - name: store-queue

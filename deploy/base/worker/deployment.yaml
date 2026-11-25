@@ -13,6 +13,7 @@ spec:
       labels:
         app: store-worker
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: worker
           image: store-worker:phase3

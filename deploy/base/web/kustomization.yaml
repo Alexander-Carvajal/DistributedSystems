@@ -4,6 +4,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - ingress.yaml
+  - rate-limit.yaml
   - hpa.yaml
   - pdb.yaml
   - network-policy.yaml
