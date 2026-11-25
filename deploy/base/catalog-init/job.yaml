@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: store-catalog-init
+  name: store-catalog-init-v2
   namespace: store-application
 spec:
   backoffLimit: 12
@@ -12,7 +12,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: init
-          image: store-api:phase2
+          image: store-api:phase3
           imagePullPolicy: Never
           command: [node, init-db.js]
           envFrom:

@@ -18,4 +18,4 @@ spec:
       memory: 768Mi
   rabbitmq:
     additionalConfig: |
-      quorum_queue.initial_group_size = 3
+      quorum_queue.initial_cluster_size = 3
