@@ -1,0 +1,46 @@
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: store-bootstrap-selfsigned
+  namespace: cert-manager
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: store-local-root-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: store.localhost local CA
+  secretName: store-local-root-ca
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: store-bootstrap-selfsigned
+    kind: Issuer
+    group: cert-manager.io
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: store-local-ca
+spec:
+  ca:
+    secretName: store-local-root-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: store-web-tls
+  namespace: store-web
+spec:
+  secretName: store-web-tls
+  dnsNames:
+    - store.localhost
+  issuerRef:
+    name: store-local-ca
+    kind: ClusterIssuer
+    group: cert-manager.io

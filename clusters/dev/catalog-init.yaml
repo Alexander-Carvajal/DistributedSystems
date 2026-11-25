@@ -7,6 +7,7 @@ spec:
   interval: 5m
   dependsOn:
     - name: store-data
+    - name: store-security
   path: ./deploy/overlays/dev/catalog-init
   prune: true
   healthChecks:

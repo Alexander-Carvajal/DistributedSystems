@@ -3,10 +3,16 @@ kind: Ingress
 metadata:
   name: store-web
   namespace: store-web
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: store-web-store-web-auth@kubernetescrd,store-web-store-web-rate-limit@kubernetescrd
 spec:
   ingressClassName: traefik
+  tls:
+    - hosts: [store.localhost]
+      secretName: store-web-tls
   rules:
-    - http:
+    - host: store.localhost
+      http:
         paths:
           - path: /
             pathType: Prefix

@@ -18,6 +18,7 @@ spec:
       labels:
         app: store-api
     spec:
+      automountServiceAccountToken: false
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname

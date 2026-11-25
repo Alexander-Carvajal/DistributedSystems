@@ -1,0 +1,22 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: store-security
+  namespace: flux-system
+spec:
+  interval: 5m
+  dependsOn:
+    - name: store-cert-manager
+  path: ./deploy/platform/security
+  prune: true
+  wait: true
+  healthChecks:
+    - apiVersion: v1
+      kind: Namespace
+      name: store-application
+    - apiVersion: v1
+      kind: Namespace
+      name: store-web
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
