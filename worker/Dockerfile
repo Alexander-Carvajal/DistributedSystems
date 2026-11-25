@@ -1,10 +1,10 @@
-FROM node:24-alpine AS dependencies
+FROM node:26-alpine AS dependencies
 
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-FROM node:24-alpine
+FROM node:26-alpine
 
 WORKDIR /app
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
