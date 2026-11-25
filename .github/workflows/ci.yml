@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  application:
+    name: Application and image security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: application/package-lock.json
+
+      - name: Install application dependencies
+        run: npm ci --prefix application
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check application/index.js
+          node --check application/db-clients.js
+          node --check application/init-db.js
+          node --check web/catalog.js
+
+      - name: Run application unit tests when present
+        run: npm test --prefix application --if-present
+
+      - name: Build application image
+        id: api-build
+        run: docker build --tag store-api:ci application
+
+      - name: Build web image
+        id: web-build
+        run: docker build --tag store-web:ci web
+
+      - name: Scan application image
+        if: ${{ always() && steps.api-build.outcome == 'success' }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: store-api:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Scan web image
+        if: ${{ always() && steps.web-build.outcome == 'success' }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: store-web:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+
+  kubernetes:
+    name: Kubernetes manifest validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set up kubeconform
+        uses: bmuschko/setup-kubeconform@v1
+        with:
+          kubeconform-version: "0.7.0"
+
+      - name: Render and validate Kustomize resources
+        shell: bash
+        run: |
+          while IFS= read -r manifest; do
+            directory="$(dirname "$manifest")"
+            echo "Validating $directory"
+            kubectl kustomize "$directory" \
+              | kubeconform -strict -ignore-missing-schemas -summary -
+          done < <(find deploy -name kustomization.yaml -type f | sort)
