@@ -1,0 +1,26 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: store-observability
+  namespace: flux-system
+spec:
+  interval: 5m
+  path: ./deploy/platform/observability
+  prune: true
+  timeout: 15m
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: otel-lgtm
+      namespace: observability
+    - apiVersion: apps/v1
+      kind: DaemonSet
+      name: otel-agent-opentelemetry-collector
+      namespace: observability
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: otel-gateway-opentelemetry-collector
+      namespace: observability
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
