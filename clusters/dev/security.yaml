@@ -5,6 +5,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
+  dependsOn:
+    - name: store-cert-manager
   path: ./deploy/platform/security
   prune: true
   wait: true

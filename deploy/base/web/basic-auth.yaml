@@ -1,0 +1,8 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: store-web-auth
+  namespace: store-web
+spec:
+  basicAuth:
+    secret: store-web-auth
