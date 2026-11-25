@@ -170,8 +170,9 @@ const start = async () => {
         if (cacheAvailable) {
           cacheRequests.add(1, { result: "miss" });
           trace[trace.length - 1] = "redis (cache miss)";
+          const refreshLockKey = `${productsCacheKey}:refresh-lock`;
           try {
-            const refreshStarted = await redis.set(`${productsCacheKey}:refresh-lock`, "1", "EX", 5, "NX");
+            const refreshStarted = await redis.set(refreshLockKey, "1", "EX", 5, "NX");
             if (refreshStarted === "OK") {
               await publishEvent("catalog.refresh", { schemaVersion: 1, eventId: randomUUID() });
             }
@@ -187,6 +188,7 @@ const start = async () => {
             throw new HttpError(503, "Catalog refresh is pending; retry shortly", trace);
           } catch (error) {
             if (error instanceof HttpError) throw error;
+            await redis.del(refreshLockKey).catch(() => {});
             console.error("Catalog refresh could not be queued:", error.message);
             throw new HttpError(503, "Catalog refresh is temporarily unavailable", trace);
           }
