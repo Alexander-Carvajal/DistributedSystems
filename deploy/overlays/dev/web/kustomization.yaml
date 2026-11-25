@@ -7,4 +7,4 @@ resources:
 images:
   - name: store-web-site1
     newName: store-web-site1
-    newTag: phase6
+    newTag: phase6.1

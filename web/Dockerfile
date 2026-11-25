@@ -8,6 +8,10 @@ RUN npm run build
 
 FROM nginx/nginx-unprivileged:1.31-alpine-otel
 
+USER root
+RUN sed -i '1i load_module modules/ngx_otel_module.so;' /etc/nginx/nginx.conf
+USER 101
+
 ARG SITE=site1
 COPY nginx.container.conf.template /etc/nginx/templates/default.conf.template
 COPY catalog.js catalog.css /usr/share/nginx/html/

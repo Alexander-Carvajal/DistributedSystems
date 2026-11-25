@@ -8,18 +8,18 @@ Grafana está disponible en `http://grafana.localhost:8081`. Antes de sincroniza
 .\scripts\setup-phase6-secrets.ps1
 ```
 
-La imagen del API en el overlay local es `store-api:phase6` con `imagePullPolicy: Never`. Antes de fusionar este cambio en la laptop, constrúyela e impórtala al clúster:
+La imagen local del API es `store-api:phase3` con `imagePullPolicy: Never`. Antes de fusionar este cambio en la laptop, constrúyela e impórtala al clúster:
 
 ```powershell
-docker build -t store-api:phase6 .\application
-k3d image import store-api:phase6 --cluster distributed-lab
+docker build -t store-api:phase3 .\application
+k3d image import store-api:phase3 --cluster distributed-lab
 ```
 
-El overlay usa la imagen web `store-web-site1:phase6`; constrúyela e impórtala también:
+El overlay usa la imagen web `store-web-site1:phase6.1`; constrúyela e impórtala también:
 
 ```powershell
-docker build --build-arg SITE=site1 -t store-web-site1:phase6 .\web
-k3d image import store-web-site1:phase6 --cluster distributed-lab
+docker build --build-arg SITE=site1 -t store-web-site1:phase6.1 .\web
+k3d image import store-web-site1:phase6.1 --cluster distributed-lab
 ```
 
 La instrumentación del navegador captura la carga inicial y las llamadas `fetch`. Nginx exporta spans del proxy al gateway OTLP y sirve el endpoint HTTP del navegador en `/v1/traces`. Grafana incluye tableros RED del API y salud del clúster, además de alertas de latencia p95 y consumo rápido o sostenido del presupuesto de error. Las alertas se consultan en Grafana; todavía no tienen un receptor externo de notificaciones.
