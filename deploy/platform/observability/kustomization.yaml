@@ -6,4 +6,5 @@ resources:
   - collectors.yaml
   - lgtm.yaml
   - dashboards.yaml
+  - alerts.yaml
   - network-policy.yaml

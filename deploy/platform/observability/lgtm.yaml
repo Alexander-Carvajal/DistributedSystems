@@ -87,6 +87,9 @@ spec:
               subPath: custom.yaml
             - name: api-dashboard
               mountPath: /otel-lgtm/grafana/conf/provisioning/dashboards/custom
+            - name: alert-rules
+              mountPath: /otel-lgtm/grafana/conf/provisioning/alerting/store-api-slo.yaml
+              subPath: rules.yaml
       volumes:
         - name: dashboard-provider
           configMap:
@@ -94,6 +97,9 @@ spec:
         - name: api-dashboard
           configMap:
             name: store-api-red-dashboard
+        - name: alert-rules
+          configMap:
+            name: store-api-slo-alerts
   volumeClaimTemplates:
     - metadata:
         name: data

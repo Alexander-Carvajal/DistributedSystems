@@ -3,3 +3,8 @@ kind: Kustomization
 resources:
   - ../../../base/web
   - ../../../base/api-service
+  - otel-network-policy.yaml
+images:
+  - name: store-web-site1
+    newName: store-web-site1
+    newTag: phase6

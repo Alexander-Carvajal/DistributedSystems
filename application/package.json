@@ -7,6 +7,7 @@
     "start": "node index.js"
   },
   "dependencies": {
+    "@opentelemetry/api": "1.10.0",
     "@opentelemetry/auto-instrumentations-node": "0.83.1",
     "ioredis": "^5.6.1",
     "mongodb": "^6.17.0",

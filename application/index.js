@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { metrics } from "@opentelemetry/api";
 import mysql from "mysql2/promise";
 import Redis from "ioredis";
 import { createMongoClient } from "./db-clients.js";
@@ -24,6 +25,11 @@ const pool = mysql.createPool({
 });
 
 const mongo = createMongoClient();
+const cacheRequests = metrics
+  .getMeter("store-api")
+  .createCounter("store.catalog.cache.requests", {
+    description: "Catalog cache lookups by result",
+  });
 const redis = new Redis({
   sentinels: required("REDIS_SENTINELS").split(",").map((endpoint) => {
     const [host, port] = endpoint.trim().split(":");
@@ -154,11 +160,15 @@ const start = async () => {
           console.error("Cache lookup failed; querying Galera directly:", error.message);
         }
         if (cached) {
+          cacheRequests.add(1, { result: "hit" });
           trace[trace.length - 1] = "redis (cache hit)";
           sendJson(response, 200, JSON.parse(cached), trace);
           return;
         }
-        if (cacheAvailable) trace[trace.length - 1] = "redis (cache miss)";
+        if (cacheAvailable) {
+          cacheRequests.add(1, { result: "miss" });
+          trace[trace.length - 1] = "redis (cache miss)";
+        }
         trace.push(required("DB_ROUTER_NAME"));
         const [products] = await pool.execute(
           "SELECT id, sku, name, description, price FROM products ORDER BY price ASC, id ASC LIMIT 10",

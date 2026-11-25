@@ -29,6 +29,18 @@ spec:
         - protocol: TCP
           port: 4318
     - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: store-web
+          podSelector:
+            matchLabels:
+              app: store-web
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    - from:
         - podSelector:
             matchLabels:
               app: otel-agent
