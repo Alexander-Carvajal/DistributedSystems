@@ -19,16 +19,7 @@
     <button id="query-api" type="button">Query endpoint</button>
     <button id="clear-cache" type="button">Clear Redis catalog cache</button>
     <p id="api-result-status" role="status"></p>
-    <ol id="api-trace" class="pipeline" aria-label="API explorer request pipeline"></ol>
     <pre id="api-result" aria-live="polite"></pre>
-  </section>
-  <section aria-labelledby="request-flow-title">
-    <h2 id="request-flow-title">Live request traces</h2>
-    <p>Each pipeline shows the components used by its API request.</p>
-    <h3>Cheapest products</h3>
-    <ol id="products-trace" class="pipeline" aria-label="Cheapest products request pipeline"></ol>
-    <h3>Product reviews (ST-001)</h3>
-    <ol id="reviews-trace" class="pipeline" aria-label="Product reviews request pipeline"></ol>
   </section>
   <h2>Ten cheapest products</h2>
   <p id="status">Loading products...</p>
@@ -36,6 +27,7 @@
   <h2>Recent product reviews</h2>
   <p id="reviews-status">Loading reviews...</p>
   <ul id="reviews"></ul>
+  <script src="/otel-instrumentation.js" defer></script>
   <script src="/catalog.js" defer></script>
 </body>
 </html>

@@ -1,8 +1,35 @@
+map $uri $otel_route {
+    ~^/api/products/[^/]+/reviews$ "/api/products/{productId}/reviews";
+    default $uri;
+}
+
+otel_exporter {
+    endpoint otel-gateway-opentelemetry-collector.observability.svc.cluster.local:4317;
+    interval 5s;
+    batch_size 128;
+    batch_count 2;
+}
+
+otel_service_name store-web;
+otel_resource_attr service.namespace store-web;
+otel_span_name "$request_method $otel_route";
+
 server {
     listen 8080;
     server_name _;
     root /usr/share/nginx/html;
     index index.html;
+    otel_trace on;
+    otel_trace_context propagate;
+
+    location = /v1/traces {
+        otel_trace off;
+        proxy_pass http://otel-gateway-opentelemetry-collector.observability.svc.cluster.local:4318/v1/traces;
+        proxy_connect_timeout 2s;
+        proxy_send_timeout 10s;
+        proxy_read_timeout 10s;
+        proxy_set_header Host $host;
+    }
 
     location /api/ {
         proxy_pass ${API_UPSTREAM}/;
@@ -13,6 +40,12 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Presentation-LB $http_x_presentation_lb;
         proxy_set_header X-Web-Node $hostname;
+    }
+
+    location ~* \.(?:css|js|png|jpg|jpeg|svg|ico|woff2?)$ {
+        otel_trace off;
+        try_files $uri =404;
+        expires 1h;
     }
 
     location / {

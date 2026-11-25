@@ -1,0 +1,167 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: store-api-slo-alerts
+  namespace: observability
+data:
+  rules.yaml: |
+    apiVersion: 1
+    groups:
+      - orgId: 1
+        name: store-api-slo
+        folder: Store Platform
+        interval: 1m
+        rules:
+          - uid: store-api-fast-burn
+            title: Store API fast error-budget burn
+            condition: C
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange: { from: 3600, to: 0 }
+                model:
+                  datasource: { type: prometheus, uid: prometheus }
+                  editorMode: code
+                  expr: (sum(rate(traces_span_metrics_calls_total{service_name="store-api",span_kind="SPAN_KIND_SERVER",status_code="STATUS_CODE_ERROR"}[5m])) / clamp_min(sum(rate(traces_span_metrics_calls_total{service_name="store-api",span_kind="SPAN_KIND_SERVER"}[5m])), 1e-9)) and (sum(rate(traces_span_metrics_calls_total{service_name="store-api",span_kind="SPAN_KIND_SERVER",status_code="STATUS_CODE_ERROR"}[1h])) / clamp_min(sum(rate(traces_span_metrics_calls_total{service_name="store-api",span_kind="SPAN_KIND_SERVER"}[1h])), 1e-9) > 0.144)
+                  instant: true
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+                  range: false
+                  refId: A
+              - refId: B
+                datasourceUid: __expr__
+                relativeTimeRange: { from: 0, to: 0 }
+                model:
+                  datasource: { type: __expr__, uid: __expr__ }
+                  expression: A
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+                  reducer: last
+                  refId: B
+                  type: reduce
+              - refId: C
+                datasourceUid: __expr__
+                relativeTimeRange: { from: 0, to: 0 }
+                model:
+                  conditions:
+                    - evaluator: { params: [0.144], type: gt }
+                      operator: { type: and }
+                      query: { params: [C] }
+                      reducer: { params: [], type: last }
+                      type: query
+                  datasource: { type: __expr__, uid: __expr__ }
+                  expression: B
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+                  refId: C
+                  type: threshold
+            noDataState: OK
+            execErrState: Error
+            for: 2m
+            annotations:
+              summary: Error ratio exceeds 14.4% over both 5m and 1h windows.
+              description: This burn rate consumes a 99% availability SLO budget rapidly. Inspect the Store API RED dashboard.
+            labels: { service: store-api, severity: critical, slo: availability }
+            isPaused: false
+          - uid: store-api-slow-burn
+            title: Store API sustained error-budget burn
+            condition: C
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange: { from: 21600, to: 0 }
+                model:
+                  datasource: { type: prometheus, uid: prometheus }
+                  editorMode: code
+                  expr: (sum(rate(traces_span_metrics_calls_total{service_name="store-api",span_kind="SPAN_KIND_SERVER",status_code="STATUS_CODE_ERROR"}[30m])) / clamp_min(sum(rate(traces_span_metrics_calls_total{service_name="store-api",span_kind="SPAN_KIND_SERVER"}[30m])), 1e-9)) and (sum(rate(traces_span_metrics_calls_total{service_name="store-api",span_kind="SPAN_KIND_SERVER",status_code="STATUS_CODE_ERROR"}[6h])) / clamp_min(sum(rate(traces_span_metrics_calls_total{service_name="store-api",span_kind="SPAN_KIND_SERVER"}[6h])), 1e-9) > 0.06)
+                  instant: true
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+                  range: false
+                  refId: A
+              - refId: B
+                datasourceUid: __expr__
+                relativeTimeRange: { from: 0, to: 0 }
+                model:
+                  datasource: { type: __expr__, uid: __expr__ }
+                  expression: A
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+                  reducer: last
+                  refId: B
+                  type: reduce
+              - refId: C
+                datasourceUid: __expr__
+                relativeTimeRange: { from: 0, to: 0 }
+                model:
+                  conditions:
+                    - evaluator: { params: [0.06], type: gt }
+                      operator: { type: and }
+                      query: { params: [C] }
+                      reducer: { params: [], type: last }
+                      type: query
+                  datasource: { type: __expr__, uid: __expr__ }
+                  expression: B
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+                  refId: C
+                  type: threshold
+            noDataState: OK
+            execErrState: Error
+            for: 15m
+            annotations:
+              summary: Error ratio exceeds 6% over both 30m and 6h windows.
+              description: This burn rate consumes a 99% availability SLO budget steadily. Inspect the Store API RED dashboard.
+            labels: { service: store-api, severity: warning, slo: availability }
+            isPaused: false
+          - uid: store-api-latency-slo
+            title: Store API p95 latency above 500ms
+            condition: C
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange: { from: 300, to: 0 }
+                model:
+                  datasource: { type: prometheus, uid: prometheus }
+                  editorMode: code
+                  expr: histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name="store-api",span_kind="SPAN_KIND_SERVER"}[5m])))
+                  instant: true
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+                  range: false
+                  refId: A
+              - refId: B
+                datasourceUid: __expr__
+                relativeTimeRange: { from: 0, to: 0 }
+                model:
+                  datasource: { type: __expr__, uid: __expr__ }
+                  expression: A
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+                  reducer: last
+                  refId: B
+                  type: reduce
+              - refId: C
+                datasourceUid: __expr__
+                relativeTimeRange: { from: 0, to: 0 }
+                model:
+                  conditions:
+                    - evaluator: { params: [500], type: gt }
+                      operator: { type: and }
+                      query: { params: [C] }
+                      reducer: { params: [], type: last }
+                      type: query
+                  datasource: { type: __expr__, uid: __expr__ }
+                  expression: B
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+                  refId: C
+                  type: threshold
+            noDataState: OK
+            execErrState: Error
+            for: 5m
+            annotations:
+              summary: Store API p95 latency has exceeded 500ms for 5 minutes.
+              description: Inspect the API and cluster health dashboards before taking action.
+            labels: { service: store-api, severity: warning, slo: latency }
+            isPaused: false

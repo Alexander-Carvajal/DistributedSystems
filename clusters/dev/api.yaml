@@ -7,6 +7,7 @@ spec:
   interval: 5m
   dependsOn:
     - name: store-catalog-init
+    - name: store-observability
   path: ./deploy/overlays/dev/api
   prune: true
   healthChecks:

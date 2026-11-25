@@ -1,0 +1,142 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-lgtm-dashboard-provider
+  namespace: observability
+data:
+  custom.yaml: |
+    apiVersion: 1
+    providers:
+      - name: Store Platform
+        orgId: 1
+        folder: Store Platform
+        type: file
+        disableDeletion: true
+        editable: false
+        options:
+          path: /otel-lgtm/grafana/conf/provisioning/dashboards/custom
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: store-api-red-dashboard
+  namespace: observability
+data:
+  store-api-red.json: |
+    {
+      "uid": "store-api-red",
+      "title": "Store API RED",
+      "description": "Request rate, error rate, and latency from OpenTelemetry server spans.",
+      "tags": ["store-platform", "opentelemetry"],
+      "timezone": "browser",
+      "schemaVersion": 41,
+      "version": 1,
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "title": "API requests per second",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "targets": [{ "refId": "A", "expr": "sum(rate(traces_span_metrics_calls_total{service_name=\"store-api\",span_kind=\"SPAN_KIND_SERVER\"}[5m]))", "legendFormat": "{{service_name}}" }],
+          "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+        },
+        {
+          "id": 2,
+          "title": "API error rate",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "targets": [{ "refId": "A", "expr": "100 * sum(rate(traces_span_metrics_calls_total{service_name=\"store-api\",span_kind=\"SPAN_KIND_SERVER\",status_code=\"STATUS_CODE_ERROR\"}[5m])) / clamp_min(sum(rate(traces_span_metrics_calls_total{service_name=\"store-api\",span_kind=\"SPAN_KIND_SERVER\"}[5m])), 1e-9)", "legendFormat": "error %" }],
+          "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 5 }] } }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+        },
+        {
+          "id": 3,
+          "title": "API p95 latency",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+          "targets": [{ "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=\"store-api\",span_kind=\"SPAN_KIND_SERVER\"}[5m])))", "legendFormat": "p95" }],
+          "fieldConfig": { "defaults": { "unit": "ms", "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 250 }, { "color": "red", "value": 500 }] } }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+        },
+        {
+          "id": 4,
+          "title": "Request rate by operation and status",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "targets": [{ "refId": "A", "expr": "sum by (span_name,status_code) (rate(traces_span_metrics_calls_total{service_name=\"store-api\",span_kind=\"SPAN_KIND_SERVER\"}[5m]))", "legendFormat": "{{span_name}} {{status_code}}" }],
+          "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 5,
+          "title": "Catalog cache hit rate",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+          "targets": [{ "refId": "A", "expr": "100 * sum(rate(store_catalog_cache_requests_total{result=\"hit\"}[5m])) / clamp_min(sum(rate(store_catalog_cache_requests_total[5m])), 1e-9)", "legendFormat": "hit %" }],
+          "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100 }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+        }
+      ]
+    }
+  cluster-health.json: |
+    {
+      "uid": "store-cluster-health",
+      "title": "Store Cluster Health",
+      "description": "Node capacity and Kubernetes pod state from OpenTelemetry host and cluster metrics.",
+      "tags": ["store-platform", "kubernetes", "opentelemetry"],
+      "timezone": "browser",
+      "schemaVersion": 41,
+      "version": 1,
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Host CPU utilization by state",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+          "targets": [{ "refId": "A", "expr": "avg by (host_name,state) (system_cpu_utilization)", "legendFormat": "{{host_name}} {{state}}" }],
+          "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 2,
+          "title": "Host memory utilization",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+          "targets": [{ "refId": "A", "expr": "100 * sum by (host_name) (system_memory_usage{state=\"used\"}) / clamp_min(sum by (host_name) (system_memory_limit), 1)", "legendFormat": "{{host_name}}" }],
+          "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 80 }, { "color": "red", "value": 90 }] } }, "overrides": [] },
+          "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+        },
+        {
+          "id": 3,
+          "title": "Pods by namespace and phase",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
+          "targets": [{ "refId": "A", "expr": "sum by (k8s_namespace_name,k8s_pod_phase) (k8s_pod_phase)", "legendFormat": "{{k8s_namespace_name}} {{k8s_pod_phase}}" }],
+          "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 4,
+          "title": "API and web request rate",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 9, "w": 12, "x": 12, "y": 9 },
+          "targets": [{ "refId": "A", "expr": "sum by (service_name,span_kind) (rate(traces_span_metrics_calls_total{service_name=~\"store-api|store-web\"}[5m]))", "legendFormat": "{{service_name}} {{span_kind}}" }],
+          "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+        }
+      ]
+    }

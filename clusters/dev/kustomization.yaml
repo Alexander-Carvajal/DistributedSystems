@@ -8,4 +8,5 @@ resources:
   - data.yaml
   - catalog-init.yaml
   - api.yaml
+  - observability.yaml
   - web.yaml

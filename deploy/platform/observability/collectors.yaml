@@ -1,0 +1,124 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: otel-agent
+  namespace: flux-system
+spec:
+  interval: 30m
+  timeout: 10m
+  releaseName: otel-agent
+  targetNamespace: observability
+  install:
+    createNamespace: true
+  chart:
+    spec:
+      chart: opentelemetry-collector
+      version: 0.183.2
+      sourceRef:
+        kind: HelmRepository
+        name: opentelemetry
+  values:
+    fullnameOverride: otel-agent-opentelemetry-collector
+    mode: daemonset
+    image:
+      repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-k8s
+      tag: 0.165.0
+    command:
+      name: otelcol-k8s
+    podLabels:
+      app: otel-agent
+    presets:
+      logsCollection:
+        enabled: true
+        includeCollectorLogs: false
+        storeCheckpoints: false
+      hostMetrics:
+        enabled: true
+        hardenedMode: true
+      kubernetesAttributes:
+        enabled: true
+    resources:
+      requests:
+        cpu: 50m
+        memory: 96Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    config:
+      exporters:
+        otlp_http/gateway:
+          endpoint: http://otel-gateway-opentelemetry-collector.observability.svc.cluster.local:4318
+      service:
+        pipelines:
+          logs:
+            exporters: [otlp_http/gateway]
+          metrics:
+            exporters: [otlp_http/gateway]
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: otel-gateway
+  namespace: flux-system
+spec:
+  interval: 30m
+  timeout: 10m
+  releaseName: otel-gateway
+  targetNamespace: observability
+  install:
+    createNamespace: true
+  dependsOn:
+    - name: otel-agent
+  chart:
+    spec:
+      chart: opentelemetry-collector
+      version: 0.183.2
+      sourceRef:
+        kind: HelmRepository
+        name: opentelemetry
+  values:
+    fullnameOverride: otel-gateway-opentelemetry-collector
+    mode: deployment
+    replicaCount: 1
+    image:
+      repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-k8s
+      tag: 0.165.0
+    command:
+      name: otelcol-k8s
+    podLabels:
+      app: otel-gateway
+    presets:
+      kubernetesAttributes:
+        enabled: true
+      clusterMetrics:
+        enabled: true
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 750m
+        memory: 512Mi
+    config:
+      exporters:
+        otlp_http/lgtm:
+          endpoint: http://otel-lgtm.observability.svc.cluster.local:4318
+      connectors:
+        span_metrics:
+          aggregation_cardinality_limit: 2000
+          histogram:
+            unit: ms
+      service:
+        pipelines:
+          logs:
+            receivers: [otlp]
+            processors: [memory_limiter, k8sattributes, batch]
+            exporters: [otlp_http/lgtm]
+          metrics:
+            receivers: [otlp, prometheus, k8s_cluster, span_metrics]
+            processors: [memory_limiter, k8sattributes, batch]
+            exporters: [otlp_http/lgtm]
+          traces:
+            receivers: [otlp]
+            processors: [memory_limiter, k8sattributes, batch]
+            exporters: [otlp_http/lgtm, span_metrics]
