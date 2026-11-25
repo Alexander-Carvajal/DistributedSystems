@@ -130,12 +130,66 @@ data:
         },
         {
           "id": 4,
-          "title": "API and web request rate",
+          "title": "API, web, and worker request rate",
           "type": "timeseries",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "gridPos": { "h": 9, "w": 12, "x": 12, "y": 9 },
-          "targets": [{ "refId": "A", "expr": "sum by (service_name,span_kind) (rate(traces_span_metrics_calls_total{service_name=~\"store-api|store-web\"}[5m]))", "legendFormat": "{{service_name}} {{span_kind}}" }],
+          "targets": [{ "refId": "A", "expr": "sum by (service_name,span_kind) (rate(traces_span_metrics_calls_total{service_name=~\"store-api|store-web|store-worker\"}[5m]))", "legendFormat": "{{service_name}} {{span_kind}}" }],
           "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+        }
+      ]
+    }
+  rabbitmq-queues.json: |
+    {
+      "uid": "store-rabbitmq-queues",
+      "title": "Store RabbitMQ Queues",
+      "description": "Ready messages, unacknowledged messages, and dead-letter backlog.",
+      "tags": ["store-platform", "rabbitmq", "queues"],
+      "timezone": "browser",
+      "schemaVersion": 41,
+      "version": 1,
+      "refresh": "30s",
+      "time": { "from": "now-1h", "to": "now" },
+      "panels": [
+        {
+          "id": 1,
+          "title": "Ready messages by queue",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+          "targets": [{ "refId": "A", "expr": "max by (queue) (rabbitmq_detailed_queue_messages_ready)", "legendFormat": "{{queue}}" }],
+          "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 2,
+          "title": "Unacknowledged messages by queue",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+          "targets": [{ "refId": "A", "expr": "max by (queue) (rabbitmq_detailed_queue_messages_unacked)", "legendFormat": "{{queue}}" }],
+          "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+          "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+        },
+        {
+          "id": 3,
+          "title": "Dead-letter queue depth",
+          "type": "stat",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+          "targets": [{ "refId": "A", "expr": "sum(rabbitmq_detailed_queue_messages_ready{queue=~\"reviews.dlq|catalog.dlq\"})", "legendFormat": "DLQ messages" }],
+          "fieldConfig": { "defaults": { "unit": "short", "min": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } }, "overrides": [] },
+          "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "area", "justifyMode": "auto" }
+        },
+        {
+          "id": 4,
+          "title": "Consumers by queue",
+          "type": "timeseries",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+          "targets": [{ "refId": "A", "expr": "max by (queue) (rabbitmq_detailed_queue_consumers)", "legendFormat": "{{queue}}" }],
+          "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
           "options": { "legend": { "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
         }
       ]

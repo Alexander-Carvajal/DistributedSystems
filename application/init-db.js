@@ -47,6 +47,7 @@ try {
   await mongo.connect();
   const reviews = mongo.db(required("MONGO_DB")).collection("product_reviews");
   await reviews.createIndex({ sku: 1, createdAt: -1 });
+  await reviews.createIndex({ idempotencyKey: 1 }, { unique: true, sparse: true });
   await reviews.updateOne(
     { sampleId: "sample-st-001" },
     {

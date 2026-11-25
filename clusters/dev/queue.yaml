@@ -1,0 +1,22 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: store-queue
+  namespace: flux-system
+spec:
+  interval: 5m
+  dependsOn:
+    - name: store-rabbitmq-operator
+    - name: store-data
+  path: ./deploy/platform/queues
+  prune: true
+  wait: true
+  timeout: 20m
+  healthChecks:
+    - apiVersion: rabbitmq.com/v1beta1
+      kind: RabbitmqCluster
+      name: store-queue
+      namespace: store-queue
+  sourceRef:
+    kind: GitRepository
+    name: flux-system

@@ -1,0 +1,21 @@
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: store-queue
+  namespace: store-queue
+spec:
+  replicas: 3
+  image: rabbitmq:4.2.9-management
+  persistence:
+    storageClassName: local-path
+    storage: 1Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+  rabbitmq:
+    additionalConfig: |
+      quorum_queue.initial_group_size = 3

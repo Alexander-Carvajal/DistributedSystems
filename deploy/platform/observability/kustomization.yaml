@@ -6,5 +6,7 @@ resources:
   - collectors.yaml
   - lgtm.yaml
   - dashboards.yaml
+  - mariadb-galera-dashboard.yaml
   - alerts.yaml
+  - queue-alerts.yaml
   - network-policy.yaml

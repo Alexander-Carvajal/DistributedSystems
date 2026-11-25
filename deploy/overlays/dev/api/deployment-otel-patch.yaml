@@ -9,6 +9,20 @@ spec:
       containers:
         - name: api
           env:
+            - name: AMQP_HOST
+              value: store-queue.store-queue.svc.cluster.local
+            - name: AMQP_PORT
+              value: "5672"
+            - name: AMQP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: store-queue-credentials
+                  key: username
+            - name: AMQP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: store-queue-credentials
+                  key: password
             - name: OTEL_SERVICE_NAME
               value: store-api
             - name: OTEL_SERVICE_NAMESPACE

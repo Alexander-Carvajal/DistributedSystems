@@ -1,15 +1,19 @@
+FROM node:24-alpine AS dependencies
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+
 FROM node:24-alpine
 
 WORKDIR /app
-
-COPY package*.json ./
-RUN npm install --global npm@12.2.3 && npm ci --omit=dev
-
-COPY index.js init-db.js db-clients.js ./
-COPY database/catalog.sql ./database/catalog.sql
+COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
+COPY --chown=node:node index.js init-db.js db-clients.js messaging.js ./
+COPY --chown=node:node database/catalog.sql ./database/catalog.sql
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 USER node
 
 EXPOSE 8080
 
-CMD ["npm", "start"]
+CMD ["node", "index.js"]

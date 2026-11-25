@@ -19,6 +19,13 @@ spec:
       ports:
         - protocol: TCP
           port: 3306
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - protocol: TCP
+          port: 3306
   egress:
     - to:
         - podSelector: {}

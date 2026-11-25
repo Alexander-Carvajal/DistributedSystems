@@ -41,6 +41,18 @@ spec:
         - protocol: TCP
           port: 4318
     - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: store-application
+          podSelector:
+            matchLabels:
+              app: store-worker
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    - from:
         - podSelector:
             matchLabels:
               app: otel-agent
@@ -78,6 +90,20 @@ spec:
       ports:
         - protocol: TCP
           port: 4318
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: store-queue
+      ports:
+        - protocol: TCP
+          port: 15692
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: store-data
+      ports:
+        - protocol: TCP
+          port: 9104
     - to:
         - ipBlock:
             cidr: 10.43.0.1/32

@@ -45,6 +45,34 @@ spec:
         cpu: 500m
         memory: 256Mi
     config:
+      receivers:
+        prometheus:
+          config:
+            scrape_configs:
+              - job_name: rabbitmq-queues
+                scrape_interval: 30s
+                metrics_path: /metrics/detailed
+                params:
+                  family: [queue_coarse_metrics, queue_consumer_count]
+                  queue: ["^(reviews\\.(created|retry|dlq)|catalog\\.(refresh|changed)(\\.retry)?|catalog\\.dlq)$"]
+                static_configs:
+                  - targets:
+                      - store-queue.store-queue.svc.cluster.local:15692
+              - job_name: mariadb-galera
+                scrape_interval: 30s
+                metrics_path: /probe
+                static_configs:
+                  - targets:
+                      - store-mariadb-0.store-mariadb-internal.store-data.svc.cluster.local:3306
+                      - store-mariadb-1.store-mariadb-internal.store-data.svc.cluster.local:3306
+                      - store-mariadb-2.store-mariadb-internal.store-data.svc.cluster.local:3306
+                relabel_configs:
+                  - source_labels: [__address__]
+                    target_label: __param_target
+                  - source_labels: [__param_target]
+                    target_label: instance
+                  - target_label: __address__
+                    replacement: store-mariadb-metrics.store-data.svc.cluster.local:9104
       exporters:
         otlp_http/gateway:
           endpoint: http://otel-gateway-opentelemetry-collector.observability.svc.cluster.local:4318

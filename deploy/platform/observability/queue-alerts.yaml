@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: store-queue-alerts
+  namespace: observability
+data:
+  rules.yaml: |
+    apiVersion: 1
+    groups:
+      - orgId: 1
+        name: store-queue-health
+        folder: Store Platform
+        interval: 1m
+        rules:
+          - uid: store-queue-backlog
+            title: Store queue backlog above 100
+            condition: C
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange: { from: 300, to: 0 }
+                model:
+                  datasource: { type: prometheus, uid: prometheus }
+                  editorMode: code
+                  expr: max(rabbitmq_detailed_queue_messages_ready{queue=~"reviews\\.created|catalog\\.(refresh|changed)"})
+                  instant: true
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+                  range: false
+                  refId: A
+              - refId: B
+                datasourceUid: __expr__
+                relativeTimeRange: { from: 0, to: 0 }
+                model:
+                  datasource: { type: __expr__, uid: __expr__ }
+                  expression: A
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+                  reducer: last
+                  refId: B
+                  type: reduce
+              - refId: C
+                datasourceUid: __expr__
+                relativeTimeRange: { from: 0, to: 0 }
+                model:
+                  conditions:
+                    - evaluator: { params: [100], type: gt }
+                      operator: { type: and }
+                      query: { params: [C] }
+                      reducer: { params: [], type: last }
+                      type: query
+                  datasource: { type: __expr__, uid: __expr__ }
+                  expression: B
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+                  refId: C
+                  type: threshold
+            noDataState: OK
+            execErrState: Error
+            for: 5m
+            annotations:
+              summary: A store event queue has more than 100 ready messages.
+              description: Check worker health and RabbitMQ consumer throughput.
+            labels: { service: store-queue, severity: warning }
+            isPaused: false
+          - uid: store-queue-dlq
+            title: Store dead-letter queue is not empty
+            condition: C
+            data:
+              - refId: A
+                datasourceUid: prometheus
+                relativeTimeRange: { from: 300, to: 0 }
+                model:
+                  datasource: { type: prometheus, uid: prometheus }
+                  editorMode: code
+                  expr: sum(rabbitmq_detailed_queue_messages_ready{queue=~"reviews\\.dlq|catalog\\.dlq"})
+                  instant: true
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+                  range: false
+                  refId: A
+              - refId: B
+                datasourceUid: __expr__
+                relativeTimeRange: { from: 0, to: 0 }
+                model:
+                  datasource: { type: __expr__, uid: __expr__ }
+                  expression: A
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+                  reducer: last
+                  refId: B
+                  type: reduce
+              - refId: C
+                datasourceUid: __expr__
+                relativeTimeRange: { from: 0, to: 0 }
+                model:
+                  conditions:
+                    - evaluator: { params: [0], type: gt }
+                      operator: { type: and }
+                      query: { params: [C] }
+                      reducer: { params: [], type: last }
+                      type: query
+                  datasource: { type: __expr__, uid: __expr__ }
+                  expression: B
+                  intervalMs: 1000
+                  maxDataPoints: 43200
+                  refId: C
+                  type: threshold
+            noDataState: OK
+            execErrState: Error
+            for: 1m
+            annotations:
+              summary: The store event dead-letter queue contains messages.
+              description: Inspect the failed message payload and the worker error before replaying it.
+            labels: { service: store-queue, severity: critical }
+            isPaused: false
