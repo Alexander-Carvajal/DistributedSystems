@@ -1,0 +1,32 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: store-mongodb
+  namespace: store-data
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: store-mongodb-svc
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: store-redis
+  namespace: store-data
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: store-redis
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: store-redis-sentinel
+  namespace: store-data
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: store-redis-sentinel

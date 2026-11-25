@@ -1,0 +1,67 @@
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: RedisReplication
+metadata:
+  name: store-redis
+  namespace: store-data
+spec:
+  clusterSize: 2
+  kubernetesConfig:
+    image: quay.io/opstree/redis:v7.0.15
+    imagePullPolicy: IfNotPresent
+    redisSecret:
+      name: store-redis-secret
+      key: password
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+  storage:
+    volumeClaimTemplate:
+      spec:
+        storageClassName: local-path
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+  redisExporter:
+    enabled: false
+    image: quay.io/opstree/redis-exporter:v1.62.0
+  podSecurityContext:
+    runAsUser: 1000
+    fsGroup: 1000
+---
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: RedisSentinel
+metadata:
+  name: store-redis
+  namespace: store-data
+spec:
+  clusterSize: 1
+  redisSentinelConfig:
+    redisReplicationName: store-redis
+    masterGroupName: store-cache
+    quorum: "1"
+    redisReplicationPassword:
+      secretKeyRef:
+        name: store-redis-secret
+        key: password
+  kubernetesConfig:
+    image: quay.io/opstree/redis-sentinel:v7.0.15
+    imagePullPolicy: IfNotPresent
+    redisSecret:
+      name: store-redis-secret
+      key: password
+    resources:
+      requests:
+        cpu: 25m
+        memory: 48Mi
+      limits:
+        cpu: 150m
+        memory: 128Mi
+  podSecurityContext:
+    runAsUser: 1000
+    fsGroup: 1000

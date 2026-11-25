@@ -1,0 +1,32 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: store-data
+  namespace: flux-system
+spec:
+  interval: 5m
+  dependsOn:
+    - name: store-operators
+  path: ./deploy/overlays/dev/data
+  prune: true
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: store-mariadb
+      namespace: store-data
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: store-mongodb
+      namespace: store-data
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: store-redis
+      namespace: store-data
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: store-redis-sentinel
+      namespace: store-data
+  timeout: 40m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system

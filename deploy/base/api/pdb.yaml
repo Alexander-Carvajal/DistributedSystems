@@ -1,0 +1,10 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: store-api
+  namespace: store-application
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: store-api
