@@ -1,8 +1,10 @@
 import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 import { metrics } from "@opentelemetry/api";
 import mysql from "mysql2/promise";
 import Redis from "ioredis";
 import { createMongoClient } from "./db-clients.js";
+import { closeMessaging, publishEvent } from "./messaging.js";
 
 const required = (name) => {
   const value = process.env[name];
@@ -168,6 +170,26 @@ const start = async () => {
         if (cacheAvailable) {
           cacheRequests.add(1, { result: "miss" });
           trace[trace.length - 1] = "redis (cache miss)";
+          try {
+            const refreshStarted = await redis.set(`${productsCacheKey}:refresh-lock`, "1", "EX", 5, "NX");
+            if (refreshStarted === "OK") {
+              await publishEvent("catalog.refresh", { schemaVersion: 1, eventId: randomUUID() });
+            }
+            for (let attempt = 0; attempt < 30; attempt += 1) {
+              await new Promise((resolve) => setTimeout(resolve, 100));
+              cached = await redis.get(productsCacheKey);
+              if (cached) {
+                trace[trace.length - 1] = "redis (cache refreshed by worker)";
+                sendJson(response, 200, JSON.parse(cached), trace);
+                return;
+              }
+            }
+            throw new HttpError(503, "Catalog refresh is pending; retry shortly", trace);
+          } catch (error) {
+            if (error instanceof HttpError) throw error;
+            console.error("Catalog refresh could not be queued:", error.message);
+            throw new HttpError(503, "Catalog refresh is temporarily unavailable", trace);
+          }
         }
         trace.push(required("DB_ROUTER_NAME"));
         const [products] = await pool.execute(
@@ -187,17 +209,16 @@ const start = async () => {
       }
 
       if (request.method === "POST" && pathname === "/cache/clear") {
-        let removed;
         try {
-          removed = await redis.del(productsCacheKey);
+          await publishEvent("catalog.changed", { schemaVersion: 1, eventId: randomUUID() });
         } catch {
-          throw new HttpError(503, "Redis cache is unavailable");
+          throw new HttpError(503, "Catalog cache invalidation could not be queued");
         }
         sendJson(
           response,
-          200,
-          { cacheKey: productsCacheKey, cacheEntryRemoved: removed === 1 },
-          [...trace, "redis (delete catalog cache)"],
+          202,
+          { status: "queued", event: "catalog.changed" },
+          [...trace, "rabbitmq (catalog.changed)"],
         );
         return;
       }
@@ -250,8 +271,28 @@ const start = async () => {
           comment,
           createdAt: new Date(),
         };
-        const result = await reviews.insertOne(review);
-        sendJson(response, 201, { id: result.insertedId.toString(), ...review }, [...trace, "mongodb (insert review)"]);
+        const idempotencyKey = request.headers["idempotency-key"];
+        if (typeof idempotencyKey !== "string" || !/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) {
+          throw new HttpError(400, "Provide an Idempotency-Key header between 8 and 128 safe characters", trace);
+        }
+        const existingReview = await reviews.findOne({ idempotencyKey });
+        if (existingReview) {
+          const { _id, idempotencyKey: _key, ...savedReview } = existingReview;
+          sendJson(response, 200, { id: idempotencyKey, ...savedReview, idempotentReplay: true }, [...trace, "mongodb (idempotent replay)"]);
+          return;
+        }
+        try {
+          await publishEvent("reviews.created", {
+            schemaVersion: 1,
+            eventId: idempotencyKey,
+            idempotencyKey,
+            review,
+          });
+        } catch (error) {
+          console.error("Review event could not be confirmed by RabbitMQ:", error.message);
+          throw new HttpError(503, "Review could not be queued; retry with the same Idempotency-Key", trace);
+        }
+        sendJson(response, 202, { id: idempotencyKey, status: "queued" }, [...trace, "rabbitmq (reviews.created)"]);
         return;
       }
 
@@ -279,7 +320,7 @@ const start = async () => {
 
   const shutdown = () => {
     server.close(() => {
-        void Promise.allSettled([pool.end(), mongo.close(), redis.quit()]).then(() => process.exit(0));
+        void Promise.allSettled([pool.end(), mongo.close(), redis.quit(), closeMessaging()]).then(() => process.exit(0));
     });
   };
   process.on("SIGINT", shutdown);

@@ -8,6 +8,7 @@ spec:
   dependsOn:
     - name: store-catalog-init
     - name: store-observability
+    - name: store-queue
   path: ./deploy/overlays/dev/api
   prune: true
   healthChecks:

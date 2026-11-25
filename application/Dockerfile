@@ -3,9 +3,9 @@ FROM node:24-alpine
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install --global npm@12.2.3 && npm ci --omit=dev
+RUN npm ci --omit=dev
 
-COPY index.js init-db.js db-clients.js ./
+COPY index.js init-db.js db-clients.js messaging.js ./
 COPY database/catalog.sql ./database/catalog.sql
 
 USER node

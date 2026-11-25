@@ -24,6 +24,6 @@ k3d image import store-web-site1:phase6 --cluster distributed-lab
 
 La instrumentación del navegador captura la carga inicial y las llamadas `fetch`. Nginx exporta spans del proxy al gateway OTLP y sirve el endpoint HTTP del navegador en `/v1/traces`. Grafana incluye tableros RED del API y salud del clúster, además de alertas de latencia p95 y consumo rápido o sostenido del presupuesto de error. Las alertas se consultan en Grafana; todavía no tienen un receptor externo de notificaciones.
 
-El tablero RED muestra la tasa de aciertos y fallos de Redis mediante el contador `store_catalog_cache_requests_total`. Las métricas de profundidad de RabbitMQ y salud de Galera se incorporarán cuando sus componentes y exporters queden desplegados en las fases correspondientes.
+El tablero RED muestra la tasa de aciertos y fallos de Redis mediante el contador `store_catalog_cache_requests_total`. El tablero de colas obtiene profundidad y mensajes sin confirmar del endpoint Prometheus de RabbitMQ; sus alertas de backlog y DLQ se provisionan cuando se despliega la fase 3. Las métricas de salud de Galera siguen pendientes de integrar con el exporter del operador MariaDB.
 
 El chart upstream todo en uno y esta configuración están pensados para laboratorio. El límite de memoria de Grafana/LGTM es 2 GiB y su PVC local es de 10 GiB. Para despliegues compartidos hay que separar los backends, usar Mimir y almacenamiento de objetos, y completar autenticación, TLS, retención, alertas y respaldos.

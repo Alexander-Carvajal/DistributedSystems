@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: store-worker
+  namespace: store-application
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: store-worker
+  template:
+    metadata:
+      labels:
+        app: store-worker
+    spec:
+      containers:
+        - name: worker
+          image: store-worker:phase3
+          imagePullPolicy: Never
+          envFrom:
+            - configMapRef:
+                name: store-api-config
+            - secretRef:
+                name: store-api-credentials
+          env:
+            - name: AMQP_HOST
+              value: store-queue.store-queue.svc.cluster.local
+            - name: AMQP_PORT
+              value: "5672"
+            - name: AMQP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: store-queue-credentials
+                  key: username
+            - name: AMQP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: store-queue-credentials
+                  key: password
+            - name: OTEL_SERVICE_NAME
+              value: store-worker
+            - name: OTEL_SERVICE_NAMESPACE
+              value: store-application
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: deployment.environment.name=dev,k8s.namespace.name=store-application
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-gateway-opentelemetry-collector.observability.svc.cluster.local:4318
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: http/protobuf
+            - name: OTEL_TRACES_EXPORTER
+              value: otlp
+            - name: OTEL_METRICS_EXPORTER
+              value: otlp
+            - name: OTEL_LOGS_EXPORTER
+              value: none
+            - name: OTEL_PROPAGATORS
+              value: tracecontext,baggage
+            - name: NODE_OPTIONS
+              value: --experimental-loader=@opentelemetry/instrumentation/hook.mjs --require @opentelemetry/auto-instrumentations-node/register
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 300m
+              memory: 384Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault

@@ -1,0 +1,17 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: store-worker
+  namespace: flux-system
+spec:
+  interval: 5m
+  dependsOn:
+    - name: store-queue
+    - name: store-observability
+    - name: store-catalog-init
+  path: ./deploy/overlays/dev/worker
+  prune: true
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system

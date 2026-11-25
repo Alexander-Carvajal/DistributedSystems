@@ -45,6 +45,19 @@ spec:
         cpu: 500m
         memory: 256Mi
     config:
+      receivers:
+        prometheus:
+          config:
+            scrape_configs:
+              - job_name: rabbitmq-queues
+                scrape_interval: 30s
+                metrics_path: /metrics/detailed
+                params:
+                  family: [queue_coarse_metrics, queue_consumer_count]
+                  queue: ["^(reviews\\.(created|retry|dlq)|catalog\\.(refresh|changed)(\\.retry)?|catalog\\.dlq)$"]
+                static_configs:
+                  - targets:
+                      - store-queue.store-queue.svc.cluster.local:15692
       exporters:
         otlp_http/gateway:
           endpoint: http://otel-gateway-opentelemetry-collector.observability.svc.cluster.local:4318

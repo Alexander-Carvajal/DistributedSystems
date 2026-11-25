@@ -90,6 +90,9 @@ spec:
             - name: alert-rules
               mountPath: /otel-lgtm/grafana/conf/provisioning/alerting/store-api-slo.yaml
               subPath: rules.yaml
+            - name: queue-alert-rules
+              mountPath: /otel-lgtm/grafana/conf/provisioning/alerting/store-queue.yaml
+              subPath: rules.yaml
       volumes:
         - name: dashboard-provider
           configMap:
@@ -100,6 +103,9 @@ spec:
         - name: alert-rules
           configMap:
             name: store-api-slo-alerts
+        - name: queue-alert-rules
+          configMap:
+            name: store-queue-alerts
   volumeClaimTemplates:
     - metadata:
         name: data

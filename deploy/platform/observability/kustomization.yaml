@@ -7,4 +7,5 @@ resources:
   - lgtm.yaml
   - dashboards.yaml
   - alerts.yaml
+  - queue-alerts.yaml
   - network-policy.yaml

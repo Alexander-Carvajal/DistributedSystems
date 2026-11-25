@@ -57,6 +57,13 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
+              kubernetes.io/metadata.name: store-queue
+      ports:
+        - protocol: TCP
+          port: 5672
+    - to:
+        - namespaceSelector:
+            matchLabels:
               kubernetes.io/metadata.name: observability
           podSelector:
             matchLabels:
