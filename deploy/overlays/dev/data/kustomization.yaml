@@ -6,3 +6,4 @@ resources:
   - redis.yaml
   - network-policy.yaml
   - pdb.yaml
+  - secrets

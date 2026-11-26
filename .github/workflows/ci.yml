@@ -86,5 +86,5 @@ jobs:
             directory="$(dirname "$manifest")"
             echo "Validating $directory"
             kubectl kustomize "$directory" \
-              | kubeconform -strict -ignore-missing-schemas -summary -
+              | kubeconform -strict -ignore-missing-schemas -skip Secret -summary -
           done < <(find deploy -name kustomization.yaml -type f | sort)

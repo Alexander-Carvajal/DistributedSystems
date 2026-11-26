@@ -9,6 +9,7 @@ resources:
   - data.yaml
   - catalog-init.yaml
   - queue.yaml
+  - app-secrets.yaml
   - api.yaml
   - worker.yaml
   - observability.yaml

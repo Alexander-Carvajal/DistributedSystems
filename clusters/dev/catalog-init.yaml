@@ -10,6 +10,10 @@ spec:
     - name: store-security
   path: ./deploy/overlays/dev/catalog-init
   prune: true
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
