@@ -13,7 +13,7 @@ spec:
   healthChecks:
     - apiVersion: batch/v1
       kind: Job
-      name: store-catalog-init-v2
+      name: store-catalog-init-v3
       namespace: store-application
   timeout: 10m
   sourceRef:

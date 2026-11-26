@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: store-catalog-init-v2
+  name: store-catalog-init-v3
   namespace: store-application
 spec:
   backoffLimit: 12
