@@ -15,7 +15,7 @@ spec:
       namespace: observability
     - apiVersion: apps/v1
       kind: DaemonSet
-      name: otel-agent-opentelemetry-collector
+      name: otel-agent-opentelemetry-collector-agent
       namespace: observability
     - apiVersion: apps/v1
       kind: Deployment
