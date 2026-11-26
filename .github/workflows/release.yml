@@ -83,7 +83,7 @@ jobs:
           output: store-web-sbom.cdx.json
 
       - name: Upload SBOMs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: image-sboms-${{ github.sha }}
           path: "*-sbom.cdx.json"
