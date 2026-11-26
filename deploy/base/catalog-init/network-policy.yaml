@@ -6,7 +6,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      batch.kubernetes.io/job-name: store-catalog-init-v2
+      batch.kubernetes.io/job-name: store-catalog-init-v3
   policyTypes: [Ingress, Egress]
   egress:
     - to:
