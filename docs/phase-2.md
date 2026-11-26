@@ -28,7 +28,7 @@ El `worker` se añade en la fase 3, cuando existan las colas y su código.
 
 ## Secretos
 
-`scripts/setup-phase2-secrets.ps1` toma las contraseñas del archivo local `.env` e instala cinco Secret en `store-data` y `store-application`. No imprime valores ni los guarda en Git. Se debe ejecutar de nuevo al recrear el clúster. La gestión de secretos mediante SOPS/External Secrets pertenece a la fase 5/7.
+`scripts/setup-phase2-secrets.ps1` toma las contraseñas del archivo local `.env` e instala cinco Secret en `store-data` y `store-application`. No imprime valores ni los guarda en Git. Para el flujo GitOps actual, estos Secrets están versionados cifrados con SOPS; vuelve a instalar la clave age en `flux-system` al recrear el clúster, como explica [seguridad local](../deploy/platform/security/README.md).
 
 ```powershell
 ./scripts/setup-phase2-secrets.ps1

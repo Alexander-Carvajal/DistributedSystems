@@ -10,6 +10,7 @@ spec:
     - name: store-queue
     - name: store-observability
     - name: store-catalog-init
+    - name: store-app-secrets
   path: ./deploy/overlays/dev/worker
   prune: true
   wait: true

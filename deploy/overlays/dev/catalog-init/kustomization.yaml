@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - ../../../base/api-config
   - ../../../base/catalog-init
+  - api-credentials.sops.yaml
