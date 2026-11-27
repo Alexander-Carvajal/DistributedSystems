@@ -1,0 +1,18 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: store-image-verification
+  namespace: flux-system
+spec:
+  interval: 5m
+  dependsOn:
+    - name: store-kyverno
+  path: ./deploy/platform/image-verification
+  prune: true
+  healthChecks:
+    - apiVersion: policies.kyverno.io/v1
+      kind: ImageValidatingPolicy
+      name: verify-store-release-images
+  sourceRef:
+    kind: GitRepository
+    name: flux-system

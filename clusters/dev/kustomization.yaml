@@ -4,6 +4,8 @@ resources:
   - flux-system
   - cert-manager.yaml
   - security.yaml
+  - kyverno.yaml
+  - image-verification.yaml
   - operators.yaml
   - rabbitmq-operator.yaml
   - data.yaml
