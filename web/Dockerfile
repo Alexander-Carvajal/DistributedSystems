@@ -1,4 +1,4 @@
-FROM node:22-alpine AS browser-build
+FROM node:26-alpine AS browser-build
 
 WORKDIR /src
 COPY package.json package-lock.json ./
