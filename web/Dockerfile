@@ -9,7 +9,8 @@ RUN npm run build
 FROM nginx/nginx-unprivileged:1.31-alpine-otel
 
 USER root
-RUN sed -i '1i load_module modules/ngx_otel_module.so;' /etc/nginx/nginx.conf
+RUN apk upgrade --no-cache libxml2 \
+    && sed -i '1i load_module modules/ngx_otel_module.so;' /etc/nginx/nginx.conf
 USER 101
 
 ARG SITE=site1

@@ -1,6 +1,25 @@
 # Seguridad local
 
-Flux applies Pod Security Admission in `restricted` mode to `store-application` and `store-web` before reconciling their workloads. The API, worker, web, and catalog-init pods do not mount ServiceAccount tokens. Traefik rate-limits and requires Basic Auth for the public site and its same-origin API proxy. CI scans application images with Trivy; release images are signed with Cosign.
+Flux applies Pod Security Admission in `restricted` mode to `store-application` and `store-web` before reconciling their workloads. The API, worker, web, and catalog-init pods do not mount ServiceAccount tokens. Traefik rate-limits and requires Basic Auth for the public site and its same-origin API proxy. CI scans application images with Trivy; the release workflow signs the API and web image digests with Cosign keyless signing.
+
+## Image signature verification
+
+Flux installs Kyverno in its dedicated `kyverno` namespace and applies an `ImageValidatingPolicy` for the API and web images published under `ghcr.io/alexander-carvajal/distributedsystems`. The policy trusts only the `release.yml` GitHub Actions workflow on `main`, with the GitHub Actions OIDC issuer and Sigstore transparency log. Matching image tags are converted to digests.
+
+The policy starts in `Audit` mode, so failed or missing signatures are reported without blocking Pods. The local development cluster currently uses locally built image names, which are outside this policy's GHCR image scope. Before enforcing signatures, publish and verify signed API and web images, deploy those GHCR images, and confirm the packages are publicly readable or configure registry credentials for Kyverno. Then change `validationActions` to `Deny` and `failurePolicy` to `Fail`, and reconcile the `store-image-verification` Flux Kustomization.
+
+To verify a release from PowerShell, replace `<commit-sha>` with the commit used by the successful `Release images` workflow:
+
+```powershell
+$identity = 'https://github.com/Alexander-Carvajal/DistributedSystems/.github/workflows/release.yml@refs/heads/main'
+$issuer = 'https://token.actions.githubusercontent.com'
+cosign verify "ghcr.io/alexander-carvajal/distributedsystems/store-api:sha-<commit-sha>" `
+  --certificate-identity $identity `
+  --certificate-oidc-issuer $issuer
+cosign verify "ghcr.io/alexander-carvajal/distributedsystems/store-web:sha-<commit-sha>" `
+  --certificate-identity $identity `
+  --certificate-oidc-issuer $issuer
+```
 
 The local CA and `store.localhost` certificate are issued by cert-manager. After the `store-web` namespace exists, create the login secret:
 
@@ -26,4 +45,4 @@ After recreating the cluster, install Flux and its `flux-system` namespace, then
 
 The tracked SOPS files are under `deploy/overlays/dev/data/secrets/`, `deploy/overlays/dev/app-secrets/`, and `deploy/overlays/dev/catalog-init/`. To rotate a Kubernetes Secret, update it through the appropriate setup script, then use `scripts/encrypt-k8s-secret.ps1` to replace its tracked encrypted manifest. The script verifies decryption locally before writing ciphertext. CI skips Kubernetes Secret objects because their tracked `data` values and SOPS metadata are ciphertext; Flux decrypts them before API schema validation and apply.
 
-Still outstanding in Phase 7: Wazuh, K3s audit-log forwarding, cosign admission enforcement, and a kube-bench report. The Wazuh local Kubernetes profile calls for at least 4.5 GiB of free cluster memory, so check current cluster usage before enabling it alongside LGTM and the data services. Basic Auth also remains a one-time local setup because its password must be chosen privately by the operator.
+Still outstanding in Phase 7: Wazuh and K3s audit-log forwarding. Cosign admission verification is prepared in Audit mode; enforcement remains pending until signed GHCR images are deployed and registry access is confirmed. A kube-bench baseline report is available under `docs/security/`. The Wazuh local Kubernetes profile calls for at least 4.5 GiB of free cluster memory, so check current cluster usage before enabling it alongside LGTM and the data services. Basic Auth also remains a one-time local setup because its password must be chosen privately by the operator.
