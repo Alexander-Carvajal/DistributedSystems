@@ -37,7 +37,7 @@ spec:
     verifyDigest: true
     required: true
   attestors:
-    - name: github-release-workflow
+    - name: githubReleaseWorkflow
       cosign:
         keyless:
           identities:
@@ -49,5 +49,5 @@ spec:
     - name: allImages
       expression: images.?containers.orValue([]) + images.?initContainers.orValue([]) + images.?ephemeralContainers.orValue([])
   validations:
-    - expression: variables.allImages.map(image, verifyImageSignatures(image, [attestors.github-release-workflow])).all(count, count > 0)
+    - expression: variables.allImages.map(image, verifyImageSignatures(image, [attestors.githubReleaseWorkflow])).all(count, count > 0)
       message: Images must be signed by the trusted GitHub Actions release workflow.
